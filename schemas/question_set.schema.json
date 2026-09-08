@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ats.local/schemas/question_set.schema.json",
+  "title": "QuestionSet",
+  "description": "Input to `python -m ats.answer`. The gold block is optional so an eval-time question set (no answers supplied) validates and parses identically to our dev question sets.",
+  "type": "object",
+  "required": ["questions"],
+  "additionalProperties": false,
+  "properties": {
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["question_id", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "question_id": { "type": "string" },
+          "text": { "type": "string", "minLength": 1 },
+          "gold": {
+            "description": "Optional ground truth for dev/scoring use. Absent at genuine evaluation time. Kept loosely typed here; ats/eval/metrics.py (Phase 1) defines the exact fields each metric consumes.",
+            "type": "object",
+            "properties": {
+              "answer": { "type": "string" },
+              "activity_event": { "type": "string" },
+              "cited_intervals": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "type": "number", "minimum": 0 }
+                }
+              },
+              "modality": {
+                "type": "string",
+                "enum": ["accelerometer", "gyroscope", "both", "N/A"]
+              },
+              "channels": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}

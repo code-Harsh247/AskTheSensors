@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ats"
+version = "0.1.0"
+description = "Ask the Sensors -- grounded, explainable activity question answering from wearable signals (CS60055 Hackathon Challenge 1)"
+requires-python = ">=3.10"
+dependencies = [
+    "jsonschema>=4.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["ats*"]

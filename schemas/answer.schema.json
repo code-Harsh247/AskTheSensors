@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ats.local/schemas/answer.schema.json",
+  "title": "Answer",
+  "description": "The PRD §5 output block plus machine-scoreable fields. `ats.contracts.format_answer_text` renders this object into the exact §5 text format and field order; this schema governs the underlying data, not the rendered text order.",
+  "type": "object",
+  "required": [
+    "question_id",
+    "answer",
+    "activity_event",
+    "evidence",
+    "explanation",
+    "tier_inferred",
+    "cited_intervals",
+    "modality",
+    "channels"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "question_id": {
+      "type": "string",
+      "description": "Matches the question_id from the input question_set."
+    },
+    "answer": {
+      "type": "string",
+      "description": "PRD §5 'Answer' field. 'N/A' if genuinely not answerable."
+    },
+    "activity_event": {
+      "type": "string",
+      "description": "PRD §5 'Activity/Event' field. 'N/A' if not applicable."
+    },
+    "evidence": {
+      "type": "object",
+      "description": "PRD §5 'Evidence' block, as human-readable text matching the required output format.",
+      "required": ["timestamps", "sensor_modality", "sensor_channels"],
+      "additionalProperties": false,
+      "properties": {
+        "timestamps": {
+          "type": "string",
+          "description": "Time range(s) as text, e.g. '905 to 1420, 2110 to 2295 (seconds from start)', or 'N/A'."
+        },
+        "sensor_modality": {
+          "type": "string",
+          "description": "e.g. 'Accelerometer, Gyroscope', 'Accelerometer', 'Gyroscope', or 'N/A'."
+        },
+        "sensor_channels": {
+          "type": "string",
+          "description": "e.g. 'All', 'Acc X/Y/Z', 'Gyro X/Y/Z', or 'N/A'."
+        }
+      }
+    },
+    "explanation": {
+      "type": "string",
+      "description": "PRD §5 'Explanation' field, reasoning grounded in the observed signal. 'N/A' only permitted at Task 1."
+    },
+    "tier_inferred": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "description": "Which of the four PRD task tiers this question was routed to (machine field, not part of the rendered §5 text)."
+    },
+    "cited_intervals": {
+      "type": "array",
+      "description": "Machine-readable form of the cited evidence, for automatic IoU/grounding scoring. Empty only when evidence is legitimately N/A (Task 1).",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "number", "minimum": 0 }
+      }
+    },
+    "modality": {
+      "type": "string",
+      "enum": ["accelerometer", "gyroscope", "both", "N/A"],
+      "description": "Machine-readable counterpart of evidence.sensor_modality, used by the scoring harness."
+    },
+    "channels": {
+      "type": "array",
+      "description": "Machine-readable counterpart of evidence.sensor_channels, e.g. ['acc_x','acc_y','acc_z'] or ['all'] or ['N/A'].",
+      "items": { "type": "string" }
+    }
+  }
+}

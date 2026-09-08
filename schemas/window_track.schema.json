@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ats.local/schemas/window_track.schema.json",
+  "title": "WindowTrackEntry",
+  "description": "One per-window record emitted by the recognition backbone (or the Phase-1 oracle). A 'track' is a JSON Lines file where each line validates against this schema. This is the sole artifact crossing the A-to-B boundary.",
+  "type": "object",
+  "required": ["window_id", "t_start", "t_end", "probs", "coverage", "feature_summary", "model_id"],
+  "additionalProperties": false,
+  "properties": {
+    "window_id": {
+      "type": "string",
+      "description": "Stable identifier for this window within the recording, e.g. 'w000123'."
+    },
+    "t_start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Window start, seconds from start of recording (frozen time base, TASKS.md §0)."
+    },
+    "t_end": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Window end, seconds from start of recording. Must exceed t_start."
+    },
+    "probs": {
+      "type": "array",
+      "description": "Class probabilities in the canonical order: LYING, SITTING, STANDING_STILL, STANDING_MOVING, WALKING, RUNNING, BICYCLING.",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "coverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Fraction of this window backed by real, non-imputed samples. 1.0 means no gap-filling occurred anywhere in the window."
+    },
+    "feature_summary": {
+      "type": "object",
+      "description": "Named signal-property values B cites verbatim in explanations (PRD §4.3, §4.4). Key names are part of the A-B contract; do not rename without a joint commit.",
+      "required": [
+        "acc_mag_mean",
+        "acc_mag_std",
+        "dominant_cadence_hz",
+        "gyro_energy_x",
+        "gyro_energy_y",
+        "gyro_energy_z"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "acc_mag_mean": { "type": "number" },
+        "acc_mag_std": { "type": "number" },
+        "dominant_cadence_hz": { "type": "number", "minimum": 0 },
+        "gyro_energy_x": { "type": "number", "minimum": 0 },
+        "gyro_energy_y": { "type": "number", "minimum": 0 },
+        "gyro_energy_z": { "type": "number", "minimum": 0 }
+      }
+    },
+    "model_id": {
+      "type": "string",
+      "description": "Identifies which model/config produced this window, e.g. 'full', 'oracle', 'quant8'."
+    }
+  }
+}

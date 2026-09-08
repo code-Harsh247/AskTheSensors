@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ats.local/schemas/cost_report.schema.json",
+  "title": "CostReport",
+  "description": "PRD §6.1 minimum resource-cost reporting, emitted by ats/profile.py (Phase 4). Required fields are the PRD §6.1 minimum; cpu_pct and energy_estimate_j are reported 'where feasible' per the PRD and so are optional.",
+  "type": "object",
+  "required": [
+    "config_id",
+    "target_device",
+    "params",
+    "disk_mb",
+    "peak_rss_mb",
+    "latency_p50_ms",
+    "latency_p95_ms"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "config_id": {
+      "type": "string",
+      "description": "Which configuration this report describes, e.g. 'full', 'quant8', 'pruned', 'distilled'."
+    },
+    "target_device": {
+      "type": "string",
+      "description": "Frozen in TASKS.md §0. Must be stated verbatim, e.g. 'Laptop CPU: AMD Ryzen 7 5800H (8C/16T), 16GB RAM, Windows 11 64-bit, single-process CPU inference'."
+    },
+    "params": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Parameter count of the model(s) involved in answering a query."
+    },
+    "disk_mb": {
+      "type": "number",
+      "minimum": 0,
+      "description": "On-disk size of the model artifact(s), in megabytes."
+    },
+    "peak_rss_mb": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Peak resident memory used during inference, in megabytes."
+    },
+    "latency_p50_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Median time to answer a single query, in milliseconds."
+    },
+    "latency_p95_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "95th-percentile time to answer a single query, in milliseconds."
+    },
+    "cpu_pct": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional. Processor utilization during inference."
+    },
+    "energy_estimate_j": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional. Estimated energy spent per query, in joules."
+    }
+  }
+}
