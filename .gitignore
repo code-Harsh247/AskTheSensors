@@ -1,0 +1,30 @@
+# Raw dataset — never commit (PRD §3.3)
+data/
+
+# Trained model artifacts
+models/
+
+# Bulk/raw results — keep only small summary CSVs under results/
+results/raw/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor/OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
