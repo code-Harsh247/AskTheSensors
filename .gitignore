@@ -1,5 +1,7 @@
-# Raw dataset — never commit (PRD §3.3)
-data/
+# Raw dataset — never commit (PRD §3.3). The dev question set is our own
+# authored artifact, not dataset content, so it is explicitly kept.
+data/*
+!data/questions_dev.json
 
 # Trained model artifacts
 models/

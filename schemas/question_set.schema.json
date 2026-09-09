@@ -7,6 +7,10 @@
   "required": ["questions"],
   "additionalProperties": false,
   "properties": {
+    "description": {
+      "type": "string",
+      "description": "Optional provenance note, e.g. flagging a set built against synthetic fixtures rather than real ExtraSensory subjects."
+    },
     "questions": {
       "type": "array",
       "minItems": 1,
@@ -18,11 +22,33 @@
           "question_id": { "type": "string" },
           "text": { "type": "string", "minLength": 1 },
           "gold": {
-            "description": "Optional ground truth for dev/scoring use. Absent at genuine evaluation time. Kept loosely typed here; ats/eval/metrics.py (Phase 1) defines the exact fields each metric consumes.",
+            "description": "Optional ground truth for dev/scoring use. Absent at genuine evaluation time. Additional properties are permitted; the named ones below are what ats/eval/metrics.py consumes.",
             "type": "object",
             "properties": {
               "answer": { "type": "string" },
               "activity_event": { "type": "string" },
+              "question_type": {
+                "type": "string",
+                "enum": [
+                  "identification",
+                  "verification",
+                  "duration",
+                  "count",
+                  "comparison",
+                  "grounding",
+                  "open_world"
+                ],
+                "description": "Grouping key for the PRD Figure 1 breakdown (accuracy by question type)."
+              },
+              "answer_kind": {
+                "type": "string",
+                "enum": ["categorical", "numeric", "temporal", "open_world"],
+                "description": "Selects the correctness rule: exact match, tolerance, IoU, or rubric-backed categorical (PRD 7.3)."
+              },
+              "numeric_value": {
+                "type": "number",
+                "description": "Machine-readable value for numeric answers (seconds for durations, an integer count otherwise), so scoring never parses prose."
+              },
               "cited_intervals": {
                 "type": "array",
                 "items": {
