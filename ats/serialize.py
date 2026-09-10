@@ -8,12 +8,35 @@ a file.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from ats.contracts import format_answer_text, validate_answer, validate_question_set
 
 FORMATS = ("text", "jsonl")
+_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def format_seconds(value: float) -> str:
+    """Seconds in the frozen time base (3 decimals), trailing zeros dropped:
+    600 -> '600', 22.5 -> '22.5'. Never scientific notation, which a
+    multi-day recording would otherwise hit."""
+    text = f"{round(value, 3):.3f}".rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
+
+
+def first_number(text: str) -> float | None:
+    match = _NUMBER.search(text)
+    return float(match.group()) if match else None
+
+
+def format_intervals(intervals: Iterable[Sequence[float]]) -> str:
+    """Render cited intervals, e.g. '905 to 1420, 2110 to 2295 (seconds from start)'."""
+    parts = [f"{format_seconds(start)} to {format_seconds(end)}" for start, end in intervals]
+    if not parts:
+        return "N/A"
+    return ", ".join(parts) + " (seconds from start)"
 
 
 def to_text(answer: dict[str, Any], query: str | None = None) -> str:
@@ -71,32 +94,3 @@ def read_question_set(path: str | Path) -> dict[str, Any]:
         question_set = json.load(f)
     validate_question_set(question_set)
     return question_set
-
-
-def na_answer(question_id: str, tier: int = 1) -> dict[str, Any]:
-    """A well-formed answer that declines to answer. Preferred over emitting a
-    confident guess when the timeline cannot support one."""
-    return {
-        "question_id": question_id,
-        "answer": "N/A",
-        "activity_event": "N/A",
-        "evidence": {
-            "timestamps": "N/A",
-            "sensor_modality": "N/A",
-            "sensor_channels": "N/A",
-        },
-        "explanation": "N/A",
-        "tier_inferred": tier,
-        "cited_intervals": [],
-        "modality": "N/A",
-        "channels": ["N/A"],
-    }
-
-
-def format_intervals(intervals: Iterable[tuple[float, float]]) -> str:
-    """Render cited intervals in the frozen time base, e.g.
-    '905 to 1420, 2110 to 2295 (seconds from start)'."""
-    parts = [f"{start:g} to {end:g}" for start, end in intervals]
-    if not parts:
-        return "N/A"
-    return ", ".join(parts) + " (seconds from start)"
