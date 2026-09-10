@@ -64,7 +64,36 @@ class Subject:
     bursts: tuple[Burst, ...]  # sorted by example_ts, ambiguous-only-if-both-empty excluded
 
 
-def load_original_labels(zip_path: str | Path, subject_id: str) -> dict[int, str | None]:
+def _resolve_source(meta_dir: Path, name: str) -> tuple[str, Path]:
+    """Returns ('zip', path) if `<name>.zip` exists, or ('dir', path) if a
+    directory named `<name>` exists instead.
+
+    Kaggle auto-extracts uploaded zip archives while processing a dataset,
+    so the exact same data can arrive locally as a zip (from
+    scripts/fetch_data.py) or, on Kaggle, as an already-extracted directory
+    of loose files -- this project's data can legitimately show up either
+    way, so every reader in this module accepts both.
+    """
+    zip_path = meta_dir / f"{name}.zip"
+    if zip_path.is_file():
+        return "zip", zip_path
+    dir_path = meta_dir / name
+    if dir_path.is_dir():
+        return "dir", dir_path
+    raise FileNotFoundError(f"neither {zip_path} nor {dir_path} exists")
+
+
+def _parse_labels_csv(f) -> dict[int, str | None]:
+    reader = csv.DictReader(f)
+    out: dict[int, str | None] = {}
+    for row in reader:
+        ts = int(row["timestamp"])
+        positive = [canonical for column, canonical in LABEL_COLUMNS if row.get(column) == "1"]
+        out[ts] = positive[0] if len(positive) == 1 else None
+    return out
+
+
+def load_original_labels(meta_dir: str | Path, subject_id: str) -> dict[int, str | None]:
     """timestamp -> canonical main-activity label, or None.
 
     None covers two real cases PRD Sec 3.2 asks us to handle rather than
@@ -75,20 +104,14 @@ def load_original_labels(zip_path: str | Path, subject_id: str) -> dict[int, str
     guessing, so the example becomes a gap in the timeline rather than a
     fabricated label.
     """
-    with zipfile.ZipFile(zip_path) as zf:
-        entry = f"{subject_id}.original_labels.csv.gz"
-        with zf.open(entry) as raw, gzip.open(raw, mode="rt", newline="") as f:
-            reader = csv.DictReader(f)
-            out: dict[int, str | None] = {}
-            for row in reader:
-                ts = int(row["timestamp"])
-                positive = [
-                    canonical
-                    for column, canonical in LABEL_COLUMNS
-                    if row.get(column) == "1"
-                ]
-                out[ts] = positive[0] if len(positive) == 1 else None
-    return out
+    kind, path = _resolve_source(Path(meta_dir), "original_labels")
+    entry_name = f"{subject_id}.original_labels.csv.gz"
+    if kind == "zip":
+        with zipfile.ZipFile(path) as zf, zf.open(entry_name) as raw, gzip.open(raw, mode="rt", newline="") as f:
+            return _parse_labels_csv(f)
+    else:
+        with gzip.open(path / entry_name, mode="rt", newline="") as f:
+            return _parse_labels_csv(f)
 
 
 def _read_dat_bytes(data: bytes) -> tuple[tuple[float, float, float, float], ...]:
@@ -108,36 +131,48 @@ def _read_dat_bytes(data: bytes) -> tuple[tuple[float, float, float, float], ...
     return tuple(rows)
 
 
+def _iter_bursts(meta_dir: Path, name: str, subject_id: str, suffix: str):
+    """Yields (timestamp, raw_bytes) for one channel ('raw_acc' or
+    'proc_gyro'), whether the archive arrived as a zip or an
+    already-extracted directory (see `_resolve_source`)."""
+    kind, path = _resolve_source(meta_dir, name)
+    if kind == "zip":
+        with zipfile.ZipFile(path) as zf:
+            prefix = f"{name}/{subject_id}/"
+            for entry in zf.namelist():
+                if not entry.startswith(prefix) or not entry.endswith(suffix):
+                    continue
+                ts = int(entry.rsplit("/", 1)[-1].split(".", 1)[0])
+                yield ts, zf.read(entry)
+    else:
+        subject_dir = path / subject_id
+        if subject_dir.is_dir():
+            for file in subject_dir.iterdir():
+                if file.name.endswith(suffix):
+                    ts = int(file.name.split(".", 1)[0])
+                    yield ts, file.read_bytes()
+
+
 def load_subject(data_dir: str | Path, subject_id: str) -> Subject:
-    """Load one subject's bursts directly out of the cached local archives.
+    """Load one subject's bursts directly out of the cached archives.
 
     `data_dir` is the same directory passed to `scripts/fetch_data.py --out`
     (default `data/raw`); the archives themselves live under its `_meta/`
-    subdirectory, matching where that script writes them. Nothing is
-    extracted to loose files; `zipfile` random access against a local file
-    is fast enough to read on demand.
+    subdirectory, matching where that script writes them, as either zip
+    archives (local) or already-extracted directories (e.g. Kaggle, which
+    auto-extracts an uploaded dataset's zip files) -- see `_resolve_source`.
     """
     meta_dir = Path(data_dir) / "_meta"
-    labels = load_original_labels(meta_dir / "original_labels.zip", subject_id)
+    labels = load_original_labels(meta_dir, subject_id)
 
     acc_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
-    with zipfile.ZipFile(meta_dir / "raw_acc.zip") as zf:
-        prefix = f"raw_acc/{subject_id}/"
-        for name in zf.namelist():
-            if not name.startswith(prefix) or not name.endswith(".m_raw_acc.dat"):
-                continue
-            ts = int(name.rsplit("/", 1)[-1].split(".", 1)[0])
-            raw = _read_dat_bytes(zf.read(name))
-            acc_by_ts[ts] = tuple((t, x * G_TO_MS2, y * G_TO_MS2, z * G_TO_MS2) for t, x, y, z in raw)
+    for ts, data in _iter_bursts(meta_dir, "raw_acc", subject_id, ".m_raw_acc.dat"):
+        raw = _read_dat_bytes(data)
+        acc_by_ts[ts] = tuple((t, x * G_TO_MS2, y * G_TO_MS2, z * G_TO_MS2) for t, x, y, z in raw)
 
     gyro_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
-    with zipfile.ZipFile(meta_dir / "proc_gyro.zip") as zf:
-        prefix = f"proc_gyro/{subject_id}/"
-        for name in zf.namelist():
-            if not name.startswith(prefix) or not name.endswith(".m_proc_gyro.dat"):
-                continue
-            ts = int(name.rsplit("/", 1)[-1].split(".", 1)[0])
-            gyro_by_ts[ts] = _read_dat_bytes(zf.read(name))
+    for ts, data in _iter_bursts(meta_dir, "proc_gyro", subject_id, ".m_proc_gyro.dat"):
+        gyro_by_ts[ts] = _read_dat_bytes(data)
 
     all_ts = sorted(set(acc_by_ts) | set(gyro_by_ts))
     bursts = []
