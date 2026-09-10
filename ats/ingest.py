@@ -83,6 +83,24 @@ def _resolve_source(meta_dir: Path, name: str) -> tuple[str, Path]:
     raise FileNotFoundError(f"neither {zip_path} nor {dir_path} exists")
 
 
+def _unwrap_same_name_nesting(path: Path) -> Path:
+    """Kaggle's dataset processing sometimes materializes a single
+    decompressed file as a directory of the *same name* containing just that
+    one file (confirmed empirically: `<uuid>.original_labels.csv` arrives as
+    a directory holding a file also named `<uuid>.original_labels.csv`).
+    Unwrap that, defensively, for however many levels deep it goes."""
+    seen: set[Path] = set()
+    while path.is_dir():
+        if path in seen:
+            raise FileNotFoundError(f"cycle while unwrapping same-name nesting at {path}")
+        seen.add(path)
+        candidate = path / path.name
+        if not candidate.exists():
+            break
+        path = candidate
+    return path
+
+
 def _parse_labels_csv(f) -> dict[int, str | None]:
     reader = csv.DictReader(f)
     out: dict[int, str | None] = {}
@@ -113,8 +131,8 @@ def load_original_labels(meta_dir: str | Path, subject_id: str) -> dict[int, str
         # Kaggle auto-decompresses .gz files while processing an uploaded
         # dataset, so the extracted directory holds plain .csv, not .csv.gz
         # -- accept either rather than assuming which one shows up.
-        gz_path = path / entry_name
-        csv_path = path / f"{subject_id}.original_labels.csv"
+        gz_path = _unwrap_same_name_nesting(path / entry_name)
+        csv_path = _unwrap_same_name_nesting(path / f"{subject_id}.original_labels.csv")
         if gz_path.is_file():
             with gzip.open(gz_path, mode="rt", newline="") as f:
                 return _parse_labels_csv(f)
@@ -163,7 +181,7 @@ def _iter_bursts(meta_dir: Path, name: str, subject_id: str, suffix: str):
                 for file in subject_dir.iterdir():
                     if file.name.endswith(suffix):
                         ts = int(file.name.split(".", 1)[0])
-                        yield ts, file.read_bytes()
+                        yield ts, _unwrap_same_name_nesting(file).read_bytes()
                 return
 
 

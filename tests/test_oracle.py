@@ -88,11 +88,21 @@ def data_dir_extracted(tmp_path):
         docs/CITATIONS.md#extrasensory-raw-file-layout), so extracting into a
         directory *also* named `raw_acc` double-nests one level:
         `raw_acc/raw_acc/<uuid>/...`.
+      - Every individual decompressed file (the labels CSV, and each `.dat`
+        burst) additionally arrives as a directory of the *same name*
+        containing just that one file -- see
+        `ats.ingest._unwrap_same_name_nesting`.
     See `ats.ingest._resolve_source` / `_iter_bursts`.
     """
     root = tmp_path / "dir_layout"
     meta = root / "_meta"
     meta.mkdir(parents=True)
+
+    def _write_same_name_nested(path: Path, data: bytes) -> None:
+        """path.mkdir(); (path/path.name).write_bytes(data) -- the same-name
+        directory-wrapping Kaggle applies to every individual file."""
+        path.mkdir(parents=True)
+        (path / path.name).write_bytes(data)
 
     rows = [
         {"timestamp": "1000", "original_label:WALKING": "1"},
@@ -102,19 +112,22 @@ def data_dir_extracted(tmp_path):
     labels_dir = meta / "original_labels"
     labels_dir.mkdir()
     fieldnames = ["timestamp"] + [col for col, _ in LABEL_COLUMNS]
-    with (labels_dir / f"{SUBJECT}.original_labels.csv").open("w", newline="", encoding="ascii") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({name: row.get(name, "0") for name in fieldnames})
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({name: row.get(name, "0") for name in fieldnames})
+    _write_same_name_nested(
+        labels_dir / f"{SUBJECT}.original_labels.csv", buf.getvalue().encode("ascii")
+    )
 
     acc_dir = meta / "raw_acc" / "raw_acc" / SUBJECT
     gyro_dir = meta / "proc_gyro" / "proc_gyro" / SUBJECT
     acc_dir.mkdir(parents=True)
     gyro_dir.mkdir(parents=True)
     for ts, (x, y, z) in {1000: (0.3, 0.1, 1.0), 1060: (0.0, 0.0, 1.0), 1120: (0.0, 0.0, 1.0)}.items():
-        (acc_dir / f"{ts}.m_raw_acc.dat").write_bytes(_burst_dat(500.0, 800, 40.0, x, y, z))
-        (gyro_dir / f"{ts}.m_proc_gyro.dat").write_bytes(_burst_dat(500.0, 800, 40.0, 0.01, 0.0, 0.0))
+        _write_same_name_nested(acc_dir / f"{ts}.m_raw_acc.dat", _burst_dat(500.0, 800, 40.0, x, y, z))
+        _write_same_name_nested(gyro_dir / f"{ts}.m_proc_gyro.dat", _burst_dat(500.0, 800, 40.0, 0.01, 0.0, 0.0))
 
     return root
 
