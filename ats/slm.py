@@ -142,7 +142,7 @@ class SLMRouter:
 
         torch.manual_seed(0)
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
-        model = AutoModelForCausalLM.from_pretrained(MODEL_ID, revision=MODEL_REVISION, torch_dtype=torch.float32)
+        model = AutoModelForCausalLM.from_pretrained(MODEL_ID, revision=MODEL_REVISION, dtype=torch.float32)
         model.eval()
         # Greedy decoding with no sampling knobs, so the same question always
         # gets the same parse.

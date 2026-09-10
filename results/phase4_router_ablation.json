@@ -1,0 +1,353 @@
+{
+  "note": "Latency is informal wall-clock on the target laptop (docs/TASKS.md section 0); official cost figures come from ats/profile.py.",
+  "rules": {
+    "dev_grounded_accuracy": 1.0,
+    "dev_qa_by_tier": {
+      "1": 1.0,
+      "2": 1.0,
+      "3": 1.0,
+      "4": 1.0
+    },
+    "dev_qa_macro_accuracy": 1.0,
+    "dev_routing_accuracy": 1.0,
+    "heldout_misroutes": [
+      {
+        "expected": {
+          "op": "open_world",
+          "predicate": null
+        },
+        "got": {
+          "activities": [
+            "WALKING"
+          ],
+          "op": "verify",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "prd_walking_trend",
+        "text": "Is her walking time increasing from one week to the next?"
+      },
+      {
+        "expected": {
+          "activities": [
+            "SITTING"
+          ],
+          "op": "duration"
+        },
+        "got": {
+          "activities": [
+            "SITTING"
+          ],
+          "op": "open_world",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "author_how_much_sitting",
+        "text": "In total, how much sitting happened?"
+      },
+      {
+        "expected": {
+          "activities": [
+            "RUNNING"
+          ],
+          "op": "count"
+        },
+        "got": {
+          "activities": [
+            "RUNNING"
+          ],
+          "op": "open_world",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "author_count_episodes",
+        "text": "Count the separate running episodes."
+      },
+      {
+        "expected": {
+          "activities": [
+            "LYING"
+          ],
+          "op": "open_world",
+          "predicate": "prolonged"
+        },
+        "got": {
+          "activities": [
+            "LYING"
+          ],
+          "op": "verify",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "author_lying_for_ages",
+        "text": "Was she lying down for ages?"
+      },
+      {
+        "expected": {
+          "op": "open_world",
+          "predicate": "activity_balance"
+        },
+        "got": {
+          "activities": [
+            "SITTING"
+          ],
+          "op": "verify",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "author_sitting_around",
+        "text": "Was she mostly sitting around or up and about?"
+      }
+    ],
+    "heldout_routing_accuracy": {
+      "author": {
+        "accuracy": 0.6923076923076923,
+        "n": 13
+      },
+      "prd": {
+        "accuracy": 0.8333333333333334,
+        "n": 6
+      }
+    },
+    "latency_ms_p50": 0.28339999698800966,
+    "latency_ms_p95": 0.4139750024478417,
+    "router": "rules"
+  },
+  "slm": {
+    "dev_grounded_accuracy": 0.9615384615384616,
+    "dev_qa_by_tier": {
+      "1": 0.8333333333333334,
+      "2": 0.8235294117647058,
+      "3": 0.9166666666666666,
+      "4": 0.75
+    },
+    "dev_qa_macro_accuracy": 0.819047619047619,
+    "dev_routing_accuracy": 0.8679245283018868,
+    "fallback_examples": [
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"LYING\"], \"time_s\": 610, \"predicate\": \"onset\"}",
+        "question": "Is the user lying down at 610 seconds?",
+        "reason": "schema: 'onset' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"SITTING\"], \"time_s\": null, \"predicate\": \"ground\"}",
+        "question": "Cite the stretch of signal where the user was sitting.",
+        "reason": "schema: 'ground' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"WALKING\"], \"time_s\": null, \"predicate\": \"onset\"}",
+        "question": "Cite the stretch of signal where the user was walking.",
+        "reason": "schema: 'onset' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"RUNNING\"], \"time_s\": null, \"predicate\": \"onset\"}",
+        "question": "Cite the stretch of signal where the user was running.",
+        "reason": "schema: 'onset' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"WALKING\"], \"time_s\": null, \"predicate\": \"pedal_based\"}",
+        "question": "Was the user using a wheeled or pedal-based mode of movement?",
+        "reason": "schema: 'pedal_based' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"WALKING\"], \"time_s\": null, \"predicate\": \"onset\"}",
+        "question": "Cite the stretch of signal where the user was walking.",
+        "reason": "schema: 'onset' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"SITTING\"], \"time_s\": null, \"predicate\": \"ground\"}",
+        "question": "Cite the stretch of signal where the user was sitting.",
+        "reason": "schema: 'ground' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"WALKING\"], \"time_s\": null, \"predicate\": \"pedal_based\"}",
+        "question": "Was the user using a wheeled or pedal-based mode of movement?",
+        "reason": "schema: 'pedal_based' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"LYING\"], \"time_s\": 1210, \"predicate\": \"onset\"}",
+        "question": "Is the user lying down at 1210 seconds?",
+        "reason": "schema: 'onset' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      },
+      {
+        "output": "{\"op\": \"open_world\", \"activities\": [\"LYING\"], \"time_s\": null, \"predicate\": \"ground\"}",
+        "question": "Cite the stretch of signal where the user was lying down.",
+        "reason": "schema: 'ground' is not one of ['prolonged', 'wheeled', 'activity_balance', 'least_movement', 'most_movement', 'strenuous', None]"
+      }
+    ],
+    "heldout_misroutes": [
+      {
+        "expected": {
+          "activities": [
+            "WALKING"
+          ],
+          "op": "verify"
+        },
+        "got": {
+          "activities": [
+            "WALKING"
+          ],
+          "op": "open_world",
+          "predicate": "most_movement",
+          "time_s": null
+        },
+        "id": "prd_morning_walk",
+        "text": "Did she take her usual morning walk?"
+      },
+      {
+        "expected": {
+          "op": "open_world",
+          "predicate": null
+        },
+        "got": {
+          "activities": [
+            "WALKING"
+          ],
+          "op": "open_world",
+          "predicate": "least_movement",
+          "time_s": null
+        },
+        "id": "prd_walking_trend",
+        "text": "Is her walking time increasing from one week to the next?"
+      },
+      {
+        "expected": {
+          "activities": [
+            "BICYCLING"
+          ],
+          "op": "verify"
+        },
+        "got": {
+          "activities": [
+            "BICYCLING"
+          ],
+          "op": "open_world",
+          "predicate": "activity_balance",
+          "time_s": null
+        },
+        "id": "author_bicycle_any",
+        "text": "Was the person on a bicycle at any point?"
+      },
+      {
+        "expected": {
+          "activities": [
+            "SITTING",
+            "WALKING"
+          ],
+          "op": "compare"
+        },
+        "got": {
+          "activities": [
+            "SITTING"
+          ],
+          "op": "open_world",
+          "predicate": "least_movement",
+          "time_s": null
+        },
+        "id": "author_sit_vs_walk",
+        "text": "Did the user sit more than they walked?"
+      },
+      {
+        "expected": {
+          "op": "identify",
+          "time_s": 120.0
+        },
+        "got": {
+          "activities": [
+            "SITTING"
+          ],
+          "op": "onset",
+          "predicate": null,
+          "time_s": 2.0
+        },
+        "id": "author_two_minutes_in",
+        "text": "At 2 minutes in, what was she up to?"
+      },
+      {
+        "expected": {
+          "activities": [
+            "LYING"
+          ],
+          "op": "open_world",
+          "predicate": "prolonged"
+        },
+        "got": {
+          "activities": [],
+          "op": "open_world",
+          "predicate": "least_movement",
+          "time_s": null
+        },
+        "id": "author_lying_for_ages",
+        "text": "Was she lying down for ages?"
+      },
+      {
+        "expected": {
+          "op": "open_world",
+          "predicate": "strenuous"
+        },
+        "got": {
+          "activities": [],
+          "op": "open_world",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "author_vigorous",
+        "text": "Any vigorous exercise?"
+      },
+      {
+        "expected": {
+          "op": "open_world",
+          "predicate": "activity_balance"
+        },
+        "got": {
+          "activities": [
+            "SITTING"
+          ],
+          "op": "open_world",
+          "predicate": "least_movement",
+          "time_s": null
+        },
+        "id": "author_sitting_around",
+        "text": "Was she mostly sitting around or up and about?"
+      },
+      {
+        "expected": {
+          "activities": [
+            "RUNNING"
+          ],
+          "op": "verify"
+        },
+        "got": {
+          "activities": [
+            "RUNNING"
+          ],
+          "op": "open_world",
+          "predicate": null,
+          "time_s": null
+        },
+        "id": "author_ever_run",
+        "text": "Did she ever run?"
+      }
+    ],
+    "heldout_routing_accuracy": {
+      "author": {
+        "accuracy": 0.46153846153846156,
+        "n": 13
+      },
+      "prd": {
+        "accuracy": 0.6666666666666666,
+        "n": 6
+      }
+    },
+    "latency_ms_p50": 5603.193200004171,
+    "latency_ms_p95": 7488.257689993043,
+    "model": {
+      "id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "load_and_first_call_s": 18.573826200008625,
+      "revision": "7ae557604adf67be50417f59c2c2f167def9a775"
+    },
+    "parsed_by_slm": 95,
+    "router": "slm",
+    "rule_fallbacks": 30
+  }
+}

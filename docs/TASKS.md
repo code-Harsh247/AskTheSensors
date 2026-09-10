@@ -252,7 +252,17 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 
 ### Exit criteria
 
-- [ ] **Ablation committed:** SLM-routed vs rule-routed accuracy on the frozen dev set. If the SLM does not beat the rules, **keep rules as the default path and say so in the report** — a measured negative result is a defensible design finding, not a failure.
+- [x] **Ablation committed:** SLM-routed vs rule-routed accuracy on the frozen dev set. If the SLM does not beat the rules, **keep rules as the default path and say so in the report** — a measured negative result is a defensible design finding, not a failure. — **Measured 2026-09-11** by `scripts/run_router_ablation.py` (`results/phase4_router_ablation.json`): Qwen2.5-0.5B-Instruct, few-shot prompt, greedy decoding, closed-schema validation with the rule router as fallback.
+
+  | | Rules | SLM (+ rule fallback) |
+  |---|---|---|
+  | Dev-set routing accuracy (n=53) | 1.000 | 0.868 |
+  | Dev-set QA accuracy, macro (n=53) | 1.000 | 0.819 |
+  | Held-out routing, questions from the brief (n=6) | 0.83 | 0.67 |
+  | Held-out routing, written by Member B (n=13) | 0.69 | 0.46 |
+  | Routing latency p50 / p95 (informal, target laptop) | 0.3 / 0.4 ms | 5.6 / 7.5 s |
+
+  > **Decision: rules stay the default; the SLM remains available behind `--router slm`.** It beat the rules on nothing, fell back to them on 30 of 125 calls (24%), and costs about 5 s per question. Its commonest failure is collapsing to `open_world` with an operator name ("onset", "ground") in the predicate field. Caveats for the report: the dev set was templated alongside the rules, so their 1.000 there is optimistic, which is why the held-out set exists; 6 questions from the brief is a tiny sample; and this measures one prompt design, not the ceiling of small models. The held-out run also exposed five rule gaps, all phrasings outside the templates: "is her walking time increasing week to week" routed to a yes/no check (a confident answer to an unsupported question), plus "in total, how much sitting", "count the separate running episodes", "lying down for ages" and "mostly sitting around or up and about". Fixing the rules against those same questions would stop them being held out, so a fresh blind set, written by someone who has not read `ats/routing.py`, is needed before final numbers.
 - [ ] `pytest tests/test_no_ungrounded_output.py` — asserts every tier-3 and tier-4 answer carries a non-`N/A` interval that **exists in the timeline**. Zero validator rejections escape to output.
 - [ ] `python -m ats.profile --config full` emits a schema-valid cost report naming the target device
 - [ ] Mean rubric score computed, with an inter-rater agreement figure from the ≥20-explanation sample
