@@ -176,7 +176,7 @@ def test_make_windows_never_spans_the_dead_time_between_bursts(data_dir):
     # burst's span.
     subject = load_subject(data_dir, SUBJECT)
     globalized = globalize_subject(subject)
-    windows = make_windows(globalized, window_s=WINDOW_LENGTH_S, hop_s=HOP_S)
+    windows = list(make_windows(globalized, window_s=WINDOW_LENGTH_S, hop_s=HOP_S))
     assert windows, "fixture should produce at least one window"
 
     burst_spans = [(0.0, 19.975), (60.0, 79.975), (120.0, 139.975)]

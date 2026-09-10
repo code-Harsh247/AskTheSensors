@@ -82,8 +82,19 @@ def make_windows(
     window_s: float = WINDOW_LENGTH_S,
     hop_s: float = HOP_S,
     hz: float = TARGET_HZ,
-) -> list[Window]:
-    """Slide a fixed window/hop within each recording burst.
+):
+    """Slide a fixed window/hop within each recording burst, yielding one
+    `Window` at a time.
+
+    A generator, not a list: a subject with a full multi-day recording can
+    have tens of thousands of windows (one real subject produced over
+    60,000), and materializing all of them into a list before a caller even
+    starts processing the first one was enough to cause out-of-memory
+    crashes both locally and on Kaggle. Every real caller (ats/oracle.py,
+    scripts/build_feature_dataset.py) only ever makes one pass, consuming
+    and discarding each window as it goes, so nothing here needs the whole
+    list at once; wrap in `list(...)` at the call site if you genuinely do
+    (e.g. a test asserting non-emptiness).
 
     Windows are generated per burst span (`globalized.label_spans`), never
     across the whole subject timeline: a subject's bursts are scattered
@@ -103,7 +114,6 @@ def make_windows(
     acc_ts = [s[0] for s in globalized.acc]
     gyro_ts = [s[0] for s in globalized.gyro]
 
-    windows: list[Window] = []
     for _activity, span_start, span_end in globalized.label_spans:
         if span_end - span_start < window_s:
             continue
@@ -126,9 +136,8 @@ def make_windows(
             )
             coverage = present / total if total else 0.0
 
-            windows.append(Window(t_start=t_start, t_end=t_end, acc=acc_slice, gyro=gyro_slice, coverage=coverage))
+            yield Window(t_start=t_start, t_end=t_end, acc=acc_slice, gyro=gyro_slice, coverage=coverage)
             start_idx += points_per_hop
-    return windows
 
 
 def label_for_window(t_start: float, t_end: float, spans) -> str | None:

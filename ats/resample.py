@@ -78,9 +78,17 @@ def globalize_subject(subject: Subject) -> GlobalSamples:
 
     acc.sort(key=lambda row: row[0])
     gyro.sort(key=lambda row: row[0])
-    t_end = max(
-        [acc[-1][0]] * bool(acc) + [gyro[-1][0]] * bool(gyro) + [spans[-1][2]]
-    )
+    # `[x] * bool(acc)` looks like a guard but isn't one -- `acc[-1]` is
+    # evaluated unconditionally before the multiplication, so it crashes on
+    # an empty list regardless. A real subject can have every burst missing
+    # one whole channel (e.g. gyroscope unavailable on their phone for the
+    # entire recording), so acc or gyro being empty here isn't hypothetical.
+    candidates = [spans[-1][2]]
+    if acc:
+        candidates.append(acc[-1][0])
+    if gyro:
+        candidates.append(gyro[-1][0])
+    t_end = max(candidates)
     return GlobalSamples(tuple(acc), tuple(gyro), tuple(spans), t_end)
 
 
