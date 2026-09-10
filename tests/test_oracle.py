@@ -48,8 +48,9 @@ def _labels_csv_gz(rows: list[dict[str, str]]) -> bytes:
 
 @pytest.fixture
 def data_dir(tmp_path):
-    meta = tmp_path / "_meta"
-    meta.mkdir()
+    root = tmp_path / "zip_layout"
+    meta = root / "_meta"
+    meta.mkdir(parents=True)
 
     # Three examples, 60s apart in wall-clock terms (only ~20s of each minute
     # is actually recorded -- real ExtraSensory duty cycle):
@@ -71,7 +72,64 @@ def data_dir(tmp_path):
     _write_zip(meta / "raw_acc.zip", acc_entries)
     _write_zip(meta / "proc_gyro.zip", gyro_entries)
 
-    return tmp_path
+    return root
+
+
+@pytest.fixture
+def data_dir_extracted(tmp_path):
+    """The same three examples as `data_dir`, but laid out exactly as Kaggle
+    actually produces them when it auto-extracts an uploaded dataset's zip
+    files (confirmed empirically, not assumed):
+      - `original_labels.zip`'s flat `<uuid>.original_labels.csv.gz` entries
+        land as plain `<uuid>.original_labels.csv` -- Kaggle also
+        auto-decompresses the inner gzip.
+      - `raw_acc.zip` / `proc_gyro.zip`'s entries are already prefixed with
+        `raw_acc/<uuid>/...` internally (see
+        docs/CITATIONS.md#extrasensory-raw-file-layout), so extracting into a
+        directory *also* named `raw_acc` double-nests one level:
+        `raw_acc/raw_acc/<uuid>/...`.
+      - Every individual decompressed file (the labels CSV, and each `.dat`
+        burst) additionally arrives as a directory of the *same name*
+        containing just that one file -- see
+        `ats.ingest._unwrap_same_name_nesting`.
+    See `ats.ingest._resolve_source` / `_iter_bursts`.
+    """
+    root = tmp_path / "dir_layout"
+    meta = root / "_meta"
+    meta.mkdir(parents=True)
+
+    def _write_same_name_nested(path: Path, data: bytes) -> None:
+        """path.mkdir(); (path/path.name).write_bytes(data) -- the same-name
+        directory-wrapping Kaggle applies to every individual file."""
+        path.mkdir(parents=True)
+        (path / path.name).write_bytes(data)
+
+    rows = [
+        {"timestamp": "1000", "original_label:WALKING": "1"},
+        {"timestamp": "1060", "original_label:SITTING": "1", "original_label:STANDING_IN_PLACE": "1"},
+        {"timestamp": "1120", "original_label:SITTING": "1"},
+    ]
+    labels_dir = meta / "original_labels"
+    labels_dir.mkdir()
+    fieldnames = ["timestamp"] + [col for col, _ in LABEL_COLUMNS]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({name: row.get(name, "0") for name in fieldnames})
+    _write_same_name_nested(
+        labels_dir / f"{SUBJECT}.original_labels.csv", buf.getvalue().encode("ascii")
+    )
+
+    acc_dir = meta / "raw_acc" / "raw_acc" / SUBJECT
+    gyro_dir = meta / "proc_gyro" / "proc_gyro" / SUBJECT
+    acc_dir.mkdir(parents=True)
+    gyro_dir.mkdir(parents=True)
+    for ts, (x, y, z) in {1000: (0.3, 0.1, 1.0), 1060: (0.0, 0.0, 1.0), 1120: (0.0, 0.0, 1.0)}.items():
+        _write_same_name_nested(acc_dir / f"{ts}.m_raw_acc.dat", _burst_dat(500.0, 800, 40.0, x, y, z))
+        _write_same_name_nested(gyro_dir / f"{ts}.m_proc_gyro.dat", _burst_dat(500.0, 800, 40.0, 0.01, 0.0, 0.0))
+
+    return root
 
 
 def test_load_subject_maps_labels_and_flags_ambiguous_as_none(data_dir):
@@ -80,6 +138,15 @@ def test_load_subject_maps_labels_and_flags_ambiguous_as_none(data_dir):
     assert by_ts[1000.0] == "WALKING"
     assert by_ts[1060.0] is None  # two main-activity columns fired: ambiguous
     assert by_ts[1120.0] == "SITTING"
+
+
+def test_load_subject_gives_identical_results_for_zip_and_extracted_directory_layouts(data_dir, data_dir_extracted):
+    """Kaggle auto-extracts an uploaded dataset's zip files into loose
+    directories; the local dev cache keeps them as zips. Both must parse to
+    the exact same Subject."""
+    from_zip = load_subject(data_dir, SUBJECT)
+    from_dir = load_subject(data_dir_extracted, SUBJECT)
+    assert from_zip == from_dir
 
 
 def test_accelerometer_units_converted_to_ms2(data_dir):
@@ -109,7 +176,7 @@ def test_make_windows_never_spans_the_dead_time_between_bursts(data_dir):
     # burst's span.
     subject = load_subject(data_dir, SUBJECT)
     globalized = globalize_subject(subject)
-    windows = make_windows(globalized, window_s=WINDOW_LENGTH_S, hop_s=HOP_S)
+    windows = list(make_windows(globalized, window_s=WINDOW_LENGTH_S, hop_s=HOP_S))
     assert windows, "fixture should produce at least one window"
 
     burst_spans = [(0.0, 19.975), (60.0, 79.975), (120.0, 139.975)]

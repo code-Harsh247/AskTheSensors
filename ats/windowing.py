@@ -26,6 +26,8 @@ import bisect
 import math
 from dataclasses import dataclass
 
+import numpy as np  # see docs/CITATIONS.md#numpy-python-library
+
 from ats.resample import TARGET_HZ, GlobalSamples, resample_channel
 
 WINDOW_LENGTH_S = 4.0
@@ -80,8 +82,19 @@ def make_windows(
     window_s: float = WINDOW_LENGTH_S,
     hop_s: float = HOP_S,
     hz: float = TARGET_HZ,
-) -> list[Window]:
-    """Slide a fixed window/hop within each recording burst.
+):
+    """Slide a fixed window/hop within each recording burst, yielding one
+    `Window` at a time.
+
+    A generator, not a list: a subject with a full multi-day recording can
+    have tens of thousands of windows (one real subject produced over
+    60,000), and materializing all of them into a list before a caller even
+    starts processing the first one was enough to cause out-of-memory
+    crashes both locally and on Kaggle. Every real caller (ats/oracle.py,
+    scripts/build_feature_dataset.py) only ever makes one pass, consuming
+    and discarding each window as it goes, so nothing here needs the whole
+    list at once; wrap in `list(...)` at the call site if you genuinely do
+    (e.g. a test asserting non-emptiness).
 
     Windows are generated per burst span (`globalized.label_spans`), never
     across the whole subject timeline: a subject's bursts are scattered
@@ -101,7 +114,6 @@ def make_windows(
     acc_ts = [s[0] for s in globalized.acc]
     gyro_ts = [s[0] for s in globalized.gyro]
 
-    windows: list[Window] = []
     for _activity, span_start, span_end in globalized.label_spans:
         if span_end - span_start < window_s:
             continue
@@ -124,36 +136,49 @@ def make_windows(
             )
             coverage = present / total if total else 0.0
 
-            windows.append(Window(t_start=t_start, t_end=t_end, acc=acc_slice, gyro=gyro_slice, coverage=coverage))
+            yield Window(t_start=t_start, t_end=t_end, acc=acc_slice, gyro=gyro_slice, coverage=coverage)
             start_idx += points_per_hop
-    return windows
+
+
+def label_for_window(t_start: float, t_end: float, spans) -> str | None:
+    """A window's ground truth is the activity of the burst it falls inside.
+    Windows are shorter than a burst by construction (WINDOW_LENGTH_S well
+    under one ~20s burst), so a window that straddles two spans, or falls
+    entirely in the dead time between bursts, has no single ground truth and
+    is skipped rather than guessed. Shared by ats/oracle.py and
+    scripts/build_feature_dataset.py, both of which need real windows paired
+    with their ground-truth label."""
+    for activity, span_start, span_end in spans:
+        if span_start <= t_start and t_end <= span_end:
+            return activity
+    return None
 
 
 def _dominant_cadence_hz(acc_mag: list[float], hz: float) -> float:
+    """Peak frequency in the gait band, via a real FFT (numpy, not a
+    hand-rolled O(n^2) DFT -- this runs once per window across every window
+    in a subject's recording, so the vectorized transform matters)."""
     n = len(acc_mag)
     if n < 4:
         return 0.0
-    mean = sum(acc_mag) / n
-    centered = [v - mean for v in acc_mag]
+    arr = np.asarray(acc_mag, dtype=float)
+    centered = arr - arr.mean()
+    spectrum = np.fft.rfft(centered)
+    freqs = np.fft.rfftfreq(n, d=1.0 / hz)
+    power = spectrum.real**2 + spectrum.imag**2
 
-    powers: dict[float, float] = {}
-    for k in range(1, n // 2 + 1):
-        freq = k * hz / n
-        if not (_CADENCE_BAND_HZ[0] <= freq <= _CADENCE_BAND_HZ[1]):
-            continue
-        angle = 2 * math.pi * k / n
-        re = sum(centered[i] * math.cos(angle * i) for i in range(n))
-        im = sum(centered[i] * math.sin(angle * i) for i in range(n))
-        powers[freq] = re * re + im * im
-    if not powers:
+    band_mask = (freqs >= _CADENCE_BAND_HZ[0]) & (freqs <= _CADENCE_BAND_HZ[1])
+    band_power = power[band_mask]
+    band_freqs = freqs[band_mask]
+    if band_power.size == 0:
         return 0.0
 
-    best_freq = max(powers, key=powers.get)
-    best_power = powers[best_freq]
-    mean_power = sum(powers.values()) / len(powers)
+    best_idx = int(np.argmax(band_power))
+    best_power = float(band_power[best_idx])
+    mean_power = float(band_power.mean())
     if mean_power == 0.0 or best_power < _CADENCE_PEAK_RATIO * mean_power:
         return 0.0  # no bin stands out from broadband noise -- not a real cadence
-    return best_freq
+    return float(band_freqs[best_idx])
 
 
 def feature_summary(window: Window, hz: float = TARGET_HZ) -> dict[str, float]:

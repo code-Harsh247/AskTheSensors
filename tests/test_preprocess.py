@@ -8,7 +8,8 @@ from __future__ import annotations
 import math
 import random
 
-from ats.resample import MAX_INTERP_GAP_S, TARGET_HZ, GlobalSamples, resample_channel
+from ats.ingest import Burst, Subject
+from ats.resample import MAX_INTERP_GAP_S, TARGET_HZ, GlobalSamples, globalize_subject, resample_channel
 from ats.windowing import HOP_S, WINDOW_LENGTH_S, make_windows
 
 
@@ -83,3 +84,22 @@ def test_injected_gap_produces_coverage_below_one_on_exactly_the_overlapping_win
             assert w.coverage < 1.0, f"window [{w.t_start},{w.t_end}) overlaps the gap but reports full coverage"
         else:
             assert w.coverage == 1.0, f"window [{w.t_start},{w.t_end}) does not overlap the gap but lost coverage"
+
+
+def test_globalize_subject_handles_a_channel_entirely_missing_across_every_burst():
+    """A real subject can have every burst missing one whole channel (e.g.
+    gyroscope unavailable on their phone for the entire recording) -- this
+    crashed globalize_subject with an IndexError until fixed (a `* bool(...)`
+    guard doesn't short-circuit; `acc[-1]` was evaluated before the
+    multiplication regardless)."""
+    bursts = tuple(
+        Burst(example_ts=1000.0 + i * 60.0, acc=(), gyro=((500.0, 0.0, 0.0, 0.0), (500.04, 0.0, 0.0, 0.0)), activity="SITTING")
+        for i in range(3)
+    )
+    subject = Subject(subject_id="no-acc-subject", bursts=bursts)
+
+    globalized = globalize_subject(subject)
+
+    assert globalized.acc == ()
+    assert len(globalized.gyro) == 6  # 2 samples x 3 bursts
+    assert globalized.t_end > 0.0

@@ -31,7 +31,17 @@ Format per entry: what it is, where it's from, which file(s) use it, and what it
 ### numpy (Python library)
 - **What:** numerical array library.
 - **Source:** https://numpy.org/
-- **Used in:** declared as a Phase-0 dependency (`pyproject.toml`) for the signal-processing and metric work coming in Phase 1.
+- **Used in:** `ats/windowing.py`, `ats/features.py` -- real-FFT (`numpy.fft.rfft`) spectral features (cadence, spectral energy bands). A hand-rolled O(n^2) DFT was the initial implementation; switched to numpy's FFT after benchmarking showed it made building the Phase 2 feature dataset (60 subjects) take ~2 hours instead of ~40 minutes.
+
+### torch / PyTorch (Python library)
+- **What:** deep learning framework.
+- **Source:** https://pytorch.org/
+- **Used in:** `ats/model.py` -- the compact 1D-CNN recognition backbone (docs/TASKS.md task 2A.2), chosen over gradient boosting because it fits PRD §6.3's quantization/pruning/distillation extra-credit path. Training runs on Kaggle (which preinstalls PyTorch); the local dependency is for the model definition, loading trained weights, and inference/profiling.
+
+### matplotlib (Python library)
+- **What:** plotting library.
+- **Source:** https://matplotlib.org/
+- **Used in:** `scripts/make_fig2.py` -- the confusion-matrix heatmap (PRD Fig. 2, docs/TASKS.md 2A.5).
 
 ---
 

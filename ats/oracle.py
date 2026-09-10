@@ -19,21 +19,9 @@ from pathlib import Path
 from ats.contracts import CANONICAL_CLASSES, validate_window_track
 from ats.ingest import load_subject
 from ats.resample import globalize_subject
-from ats.windowing import HOP_S, WINDOW_LENGTH_S, feature_summary, make_windows
+from ats.windowing import HOP_S, WINDOW_LENGTH_S, feature_summary, label_for_window, make_windows
 
 DEFAULT_DATA_DIR = "data/raw"
-
-
-def _label_for_window(t_start: float, t_end: float, spans) -> str | None:
-    """A window's ground truth is the activity of the burst it falls inside.
-    Windows are shorter than a burst by construction (WINDOW_LENGTH_S well
-    under one ~20s burst), so a window that straddles two spans, or falls
-    entirely in the dead time between bursts, has no single ground truth and
-    is skipped rather than guessed."""
-    for activity, span_start, span_end in spans:
-        if span_start <= t_start and t_end <= span_end:
-            return activity
-    return None
 
 
 def _probs_for(label: str, soften_confidence: bool, rng: random.Random) -> list[float]:
@@ -64,7 +52,7 @@ def build_track(
 
     entries: list[dict] = []
     for i, w in enumerate(windows):
-        true_label = _label_for_window(w.t_start, w.t_end, globalized.label_spans)
+        true_label = label_for_window(w.t_start, w.t_end, globalized.label_spans)
         if true_label is None:
             continue
         if drop_windows and rng.random() < drop_windows:
