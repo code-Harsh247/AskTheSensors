@@ -1,30 +1,24 @@
 """CLI entry point: python -m ats.answer --questions <path> --track <path> --out <path>
 
-Phase 1 wiring: load a window track, aggregate it into a timeline, and emit a
-well-formed answer per question. Question routing and the deterministic
-reasoning operators land in Phase 2 (docs/TASKS.md tasks 2B.1-2B.4), so the
-answer *content* here is a single timeline-derived baseline, not a real
-per-question answer. Phase 1 gates well-formedness only.
+Route each question to a typed operator, compute the answer deterministically
+from the activity timeline, attach the evidence behind it, and pass it
+through the grounding validator before it can be written. An answer the
+validator rejects is never emitted: it is replaced by an explicit abstention
+that is itself validated, and the rejection is reported rather than dropped.
 """
 
 from __future__ import annotations
 
 import argparse
-from typing import Any
+import sys
+from typing import Any, Sequence
 
 from ats.aggregate import Timeline, build_timeline, load_track
-from ats.serialize import (
-    format_intervals,
-    na_answer,
-    read_question_set,
-    write_answers,
-)
-
-PHASE1_NOTE = (
-    "Phase 1 baseline: this answer reports the timeline's dominant activity "
-    "rather than answering the specific question; per-question routing lands "
-    "in Phase 2."
-)
+from ats.evidence import CHANNELS, CHANNELS_TEXT, MODALITY, MODALITY_TEXT
+from ats.operators import Finding, abstain, execute
+from ats.routing import OperatorCall, route
+from ats.serialize import format_intervals, read_question_set, write_answers
+from ats.validator import grounding_problems, validate_grounding
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,32 +35,56 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def baseline_answer(question_id: str, timeline: Timeline) -> dict[str, Any]:
-    """A well-formed, timeline-grounded placeholder answer."""
-    activity = timeline.dominant_activity()
-    if activity is None:
-        return na_answer(question_id)
-
-    intervals = [iv.as_tuple() for iv in timeline.intervals_of(activity)]
-    total = timeline.total_duration(activity)
+def to_answer(question_id: str, call: OperatorCall, finding: Finding) -> dict[str, Any]:
+    cited = [list(span) for span in finding.cited]
+    has_evidence = bool(cited)
     return {
         "question_id": question_id,
-        "answer": activity.replace("_", " ").title(),
-        "activity_event": activity.replace("_", " ").title(),
+        "answer": finding.answer,
+        "activity_event": finding.activity_event,
         "evidence": {
-            "timestamps": format_intervals(intervals),
-            "sensor_modality": "Accelerometer, Gyroscope",
-            "sensor_channels": "All",
+            "timestamps": format_intervals(finding.cited),
+            "sensor_modality": MODALITY_TEXT if has_evidence else "N/A",
+            "sensor_channels": CHANNELS_TEXT if has_evidence else "N/A",
         },
-        "explanation": (
-            f"{activity.replace('_', ' ').title()} accounts for the largest share of the "
-            f"recording, {total:g} seconds across {len(intervals)} interval(s). {PHASE1_NOTE}"
-        ),
-        "tier_inferred": 1,
-        "cited_intervals": [list(i) for i in intervals],
-        "modality": "both",
-        "channels": ["all"],
+        "explanation": finding.explanation,
+        "tier_inferred": call.tier,
+        "cited_intervals": cited,
+        "modality": MODALITY if has_evidence else "N/A",
+        "channels": list(CHANNELS) if has_evidence else ["N/A"],
     }
+
+
+def answer_question(
+    question: dict[str, Any], timeline: Timeline, windows: Sequence[dict[str, Any]]
+) -> tuple[dict[str, Any], list[str]]:
+    """Returns the answer to emit and any grounding problems found in the
+    answer that was originally computed."""
+    call = route(question["text"])
+    answer = to_answer(question["question_id"], call, execute(call, timeline, windows))
+    problems = grounding_problems(answer, call, timeline)
+    if problems:
+        answer = to_answer(
+            question["question_id"],
+            call,
+            abstain(f"Withheld: the computed answer failed grounding validation ({'; '.join(problems)})."),
+        )
+        validate_grounding(answer, call, timeline)
+    return answer, problems
+
+
+def answer_all(
+    questions: Sequence[dict[str, Any]], windows: Sequence[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    timeline = build_timeline(windows)
+    answers: list[dict[str, Any]] = []
+    rejections: list[dict[str, Any]] = []
+    for question in questions:
+        answer, problems = answer_question(question, timeline, windows)
+        answers.append(answer)
+        if problems:
+            rejections.append({"question_id": question["question_id"], "problems": problems})
+    return answers, rejections
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -78,15 +96,14 @@ def main(argv: list[str] | None = None) -> None:
             "(Phase 3 integration). Supply --track for now."
         )
 
-    timeline = build_timeline(load_track(args.track))
-    question_set = read_question_set(args.questions)
-    questions = question_set["questions"]
+    windows = load_track(args.track)
+    questions = read_question_set(args.questions)["questions"]
+    answers, rejections = answer_all(questions, windows)
+    write_answers(answers, args.out, fmt=args.format, queries={q["question_id"]: q["text"] for q in questions})
 
-    answers = [baseline_answer(q["question_id"], timeline) for q in questions]
-    queries = {q["question_id"]: q["text"] for q in questions}
-    write_answers(answers, args.out, fmt=args.format, queries=queries)
-
-    print(f"answered {len(answers)} questions -> {args.out}")
+    for rejection in rejections:
+        print(f"withheld {rejection['question_id']}: {'; '.join(rejection['problems'])}", file=sys.stderr)
+    print(f"answered {len(answers)} questions ({len(rejections)} withheld by the grounding validator) -> {args.out}")
 
 
 if __name__ == "__main__":

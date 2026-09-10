@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from ats.eval import metrics
+from ats.serialize import first_number
 
 QUESTION_TYPES = (
     "identification",
@@ -18,6 +19,20 @@ QUESTION_TYPES = (
     "grounding",
     "open_world",
 )
+
+TIER_OF_TYPE = {
+    "identification": 1,
+    "verification": 1,
+    "duration": 2,
+    "count": 2,
+    "comparison": 2,
+    "grounding": 3,
+    "open_world": 4,
+}
+
+
+def _predicted_number(answer: dict[str, Any]) -> float | None:
+    return first_number(answer.get("answer", ""))
 
 
 def _score_one(answer: dict[str, Any] | None, gold: dict[str, Any]) -> bool:
@@ -30,9 +45,7 @@ def _score_one(answer: dict[str, Any] | None, gold: dict[str, Any]) -> bool:
 
     if kind == "numeric":
         expected = gold.get("numeric_value")
-        predicted = answer.get("numeric_value")
-        if predicted is None:
-            predicted = _first_number(answer.get("answer", ""))
+        predicted = _predicted_number(answer)
         if expected is None or predicted is None:
             return False
         return metrics.within_tolerance(predicted, expected)
@@ -46,13 +59,6 @@ def _score_one(answer: dict[str, Any] | None, gold: dict[str, Any]) -> bool:
         )
 
     return metrics.categorical_match(answer.get("answer", ""), gold.get("answer", ""))
-
-
-def _first_number(text: str) -> float | None:
-    import re
-
-    match = re.search(r"-?\d+(?:\.\d+)?", text)
-    return float(match.group()) if match else None
 
 
 def evaluate(pred: dict[str, Any], gold: dict[str, Any]) -> dict[str, Any]:
@@ -87,24 +93,12 @@ def evaluate(pred: dict[str, Any], gold: dict[str, Any]) -> dict[str, Any]:
         if not rows:
             continue
         correct = sum(1 for _, _, ok in rows if ok)
-        entry: dict[str, Any] = {
-            "n": len(rows),
-            "accuracy": correct / len(rows),
-        }
+        entry: dict[str, Any] = {"n": len(rows), "accuracy": correct / len(rows)}
 
-        numeric = [
-            (a, g)
+        usable = [
+            (_predicted_number(a), g.get("numeric_value"))
             for g, a, _ in rows
             if g.get("answer_kind") == "numeric" and a is not None
-        ]
-        usable = [
-            (
-                a.get("numeric_value")
-                if a.get("numeric_value") is not None
-                else _first_number(a.get("answer", "")),
-                g.get("numeric_value"),
-            )
-            for a, g in numeric
         ]
         usable = [(p, e) for p, e in usable if p is not None and e is not None]
         if usable:
@@ -117,16 +111,19 @@ def evaluate(pred: dict[str, Any], gold: dict[str, Any]) -> dict[str, Any]:
 
         by_type[question_type] = entry
 
-    grounded_rows = [
-        (g, a, ok) for g, a, ok in graded if g.get("cited_intervals")
-    ]
+    by_tier: dict[str, dict[str, Any]] = {}
+    for tier in (1, 2, 3, 4):
+        oks = [ok for g, _, ok in graded if TIER_OF_TYPE.get(g.get("question_type", "")) == tier]
+        if oks:
+            by_tier[str(tier)] = {"n": len(oks), "accuracy": sum(oks) / len(oks)}
+
+    grounded_rows = [(g, a, ok) for g, a, ok in graded if g.get("cited_intervals")]
     grounded_accuracy = None
     if grounded_rows:
         grounded_hits = sum(
             1
             for g, a, ok in grounded_rows
-            if a is not None
-            and metrics.is_grounded_and_correct(a, g, ok)
+            if a is not None and metrics.is_grounded_and_correct(a, g, ok)
         )
         grounded_accuracy = grounded_hits / len(grounded_rows)
 
@@ -136,11 +133,13 @@ def evaluate(pred: dict[str, Any], gold: dict[str, Any]) -> dict[str, Any]:
         "skipped_no_gold": skipped,
         "n_missing_predictions": sum(1 for _, a, _ in graded if a is None),
         "by_question_type": by_type,
+        "by_tier": by_tier,
         "overall_micro_accuracy": overall_correct / len(graded),
         "overall_macro_accuracy": metrics.macro_average(
             [e["accuracy"] for e in by_type.values()]
         ),
         "grounded_accuracy": grounded_accuracy,
+        "n_grounded_rows": len(grounded_rows),
         "iou_threshold": metrics.HEADLINE_IOU_THRESHOLD,
         "relative_tolerance": metrics.RELATIVE_DURATION_TOL,
         "absolute_tolerance_s": metrics.DURATION_ABS_TOL_S,
