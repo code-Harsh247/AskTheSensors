@@ -19,9 +19,9 @@ HEADLINE_IOU_THRESHOLD = 0.5
 RELATIVE_DURATION_TOL = 0.10
 
 # The absolute half of the frozen tolerance is max(2 x window_hop, 10% rel).
-# The hop is Member A's Phase 1 decision, so it stays unset until published;
-# until then the relative tolerance alone applies.
-DURATION_ABS_TOL_S: float | None = None
+# Member A froze the window hop at 2.0s in Phase 1 (docs/TASKS.md Sec 0,
+# ats/windowing.py:HOP_S) on 2026-09-10, giving 2 x 2.0s = 4.0s here.
+DURATION_ABS_TOL_S: float | None = 4.0
 
 
 def _require(values: Sequence, name: str = "input") -> None:
