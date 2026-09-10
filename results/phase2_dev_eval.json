@@ -1,0 +1,84 @@
+{
+  "absolute_tolerance_s": 4.0,
+  "by_question_type": {
+    "comparison": {
+      "accuracy": 1.0,
+      "n": 5
+    },
+    "count": {
+      "accuracy": 1.0,
+      "mae": 0.0,
+      "n": 3
+    },
+    "duration": {
+      "accuracy": 1.0,
+      "mae": 0.0,
+      "n": 9
+    },
+    "grounding": {
+      "accuracy": 1.0,
+      "n": 12
+    },
+    "identification": {
+      "accuracy": 1.0,
+      "n": 6
+    },
+    "open_world": {
+      "accuracy": 1.0,
+      "n": 12
+    },
+    "verification": {
+      "accuracy": 1.0,
+      "binary": {
+        "accuracy": 1.0,
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "specificity": 1.0,
+        "tn": 3,
+        "tp": 3
+      },
+      "n": 6
+    }
+  },
+  "by_tier": {
+    "1": {
+      "accuracy": 1.0,
+      "n": 12
+    },
+    "2": {
+      "accuracy": 1.0,
+      "n": 17
+    },
+    "3": {
+      "accuracy": 1.0,
+      "n": 12
+    },
+    "4": {
+      "accuracy": 1.0,
+      "n": 12
+    }
+  },
+  "grounded_accuracy": 1.0,
+  "iou_threshold": 0.5,
+  "label_noise": 0.0,
+  "n_abstained": 2,
+  "n_empty_answers": 0,
+  "n_graded": 53,
+  "n_grounded_rows": 26,
+  "n_missing_predictions": 0,
+  "n_rejected_by_validator": 0,
+  "overall_macro_accuracy": 1.0,
+  "overall_micro_accuracy": 1.0,
+  "rejections": [],
+  "relative_tolerance": 0.1,
+  "seed": 0,
+  "skipped_no_gold": 0,
+  "subjects": [
+    "subj_synth_a",
+    "subj_synth_b",
+    "subj_synth_c"
+  ]
+}

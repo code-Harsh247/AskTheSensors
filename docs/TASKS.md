@@ -27,6 +27,7 @@ These are settled **before** anyone writes logic, and are changed only by joint 
 | Duration tolerance | `max(2 × window_hop, 10% relative)` | Derived from A's Phase 1 hop, not invented. Pre-registered for the same reason |
 | Target device | **Laptop CPU** — AMD Ryzen 7 5800H (8C/16T), 16 GB RAM, Windows 11 64-bit, single-process CPU inference (no GPU) | Chosen for reproducibility with no cross-compilation or extra hardware; PRD §6.2 explicitly allows "a laptop processor" and says clear, consistent reporting matters more than which hardware is chosen |
 | Window / hop | **4.0s / 2.0s** (50% overlap), frozen 2026-09-10 | A window must fit inside one ~20s ExtraSensory recording burst with room to spare (aggregation never segments across a gap — see `ats/aggregate.py`), and 4s covers several gait cycles even at walking cadence. The 2s hop feeds directly into the duration tolerance below. See `ats/windowing.py` for the full rationale |
+| Interval semantics | **Minute-attributed bouts**, decided 2026-09-11 | ExtraSensory records ~22 s of signal per labeled minute and labels per minute, so each burst stands for its whole minute: consecutive same-activity minutes merge into one bout, and a missing minute stays a real gap. Without this, "how long was she walking?" returns about a third of reality and "how many times?" counts bursts instead of bouts. Explanations state how much recorded signal backs each cited interval. See `ats/aggregate.py` |
 
 **Naming convention for the package:** `ats/` (Ask The Sensors).
 
@@ -126,7 +127,7 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 
   > PRD §7.1 warns the graded set will include difficult and edge-case questions. Authoring our own edge cases now is the only way to find out that our system returns `None` on them.
 
-  > **Status:** 52 questions generated over three **synthetic** subjects (12/16/12/12 across tiers 1–4), all four edge cases present and asserted by `tests/test_pipeline.py`. Gold is derived from the declared ground truth in `scripts/make_dev_fixture.py`, never from `ats/aggregate.py`, so using this set to test aggregation is not circular. **Questions over ≥3 real ExtraSensory subjects still to be added** once Member A publishes dev subjects — that is what the "≥3 dev subjects" requirement means and it is not yet met.
+  > **Status (revised 2026-09-11):** 53 questions over three **synthetic** subjects (12/17/12/12 across tiers 1–4), one file per subject in `data/questions_dev/` so each question set pairs with exactly one recording, as it will at evaluation time. The fixtures were regenerated in Phase 2 to mirror ExtraSensory's real structure (one 22 s burst per labeled minute; gaps are missing minutes) after the minute-attribution decision in §0. All four edge cases are present and asserted by `tests/test_pipeline.py`. Gold is derived from the declared ground truth in `scripts/make_dev_fixture.py`, never from the reasoning code, so using this set to test that code is not circular. **Questions over ≥3 real ExtraSensory subjects are still to be added** — that is what the "≥3 dev subjects" requirement means, and it is not yet met.
 
 ### Exit criteria
 
@@ -139,7 +140,7 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 - [x] `python -m ats.oracle --subject <id> --out track.jsonl` produces a file that validates against `window_track.schema.json` — verified both against a controlled synthetic fixture (`tests/test_oracle.py`) and end-to-end against a real ExtraSensory subject (21,505 windows, 100% schema-valid; see `tests/fixtures/track_subj_real_00EABED2.jsonl`)
 
 **Member B**
-- [x] `python -m ats.answer --questions data/questions_dev.json --track <track> --out ans.txt` produces **100% schema-valid output for 100% of questions**. Content correctness is *not* gated yet — well-formedness is. Gated automatically by `tests/test_pipeline.py`.
+- [x] `python -m ats.answer --questions data/questions_dev/<subject>.json --track <track> --out ans.txt` produces **100% schema-valid output for 100% of questions**. Content correctness is *not* gated yet — well-formedness is. Gated automatically by `tests/test_pipeline.py`.
 - [x] `python -m ats.eval` runs to completion and emits a metrics dict
 - [x] `pytest tests/test_metrics.py` — every metric checked against a **hand-computed** fixture: a two-interval IoU worked out by hand, a macro-F1 on a toy 3-class confusion matrix, an MAPE on known values
 
@@ -148,7 +149,7 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 ### Artifacts crossing the boundary
 
 - **A → B:** `ats/oracle.py` + one committed sample track (`tests/fixtures/track_subj_real_00EABED2.jsonl`, regenerable via `scripts/make_sample_track.py`) + the frozen window/hop numbers (4.0s / 2.0s) — **delivered 2026-09-10**
-- **B → A:** `data/questions_dev.json` (**frozen at the end of this phase** — later additions go to `questions_dev_v2` so A's robustness and Pareto curves stay comparable across the project) + the importable `evaluate()`
+- **B → A:** `data/questions_dev/` (one question set per dev subject) + the importable `evaluate()` + `ats.eval.dev.run_dev_eval()`. The Phase 1 single-file set was superseded on 2026-09-11, before anything consumed it, when the minute-attribution decision changed what a gold interval means. **Frozen from that date** — later additions go to `data/questions_dev_v2/` so A's robustness and Pareto curves stay comparable across the project
 
 ---
 
@@ -178,6 +179,8 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 
   > This is the architectural enforcement of PRD §1.3 ("an answer produced by language reasoning alone does not meet the requirement") and directly protects the 20% evidence-grounding weight. It is a hard gate in the code path, not a lint.
 
+  > **Status:** implemented in `ats/routing.py`, `ats/operators.py`, `ats/evidence.py`, and `ats/validator.py`, with shared vocabulary in `ats/vocab.py`. Two design calls worth knowing. (1) A rejected answer is replaced by an explicit abstention that itself passes validation, and the rejection is reported, so nothing unvalidated is ever written. (2) An abstention (`N/A`) is the one answer allowed without evidence at tiers 3–4, because it makes no claim; any other tier-3/4 answer must cite evidence, and negative findings ("never happened") cite every observed interval as the evidence examined. Questions the operators cannot answer faithfully (time-restricted durations, threshold questions, unrecognised open-world phrasing) abstain rather than answer a different question.
+
 ### Exit criteria
 
 **Member A**
@@ -186,11 +189,13 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 - [ ] Confusions are named in writing, especially sitting vs standing-still and walking vs running (PRD §7.4.2 calls these out specifically)
 
 **Member B** *(measured against the **oracle** track)*
-- [ ] Tier-1 and tier-2 accuracy **≥ 0.95**
-- [ ] Grounded accuracy at IoU 0.5 **≥ 0.90**
+- [x] Tier-1 and tier-2 accuracy **≥ 0.95** — measured **1.000** (n=12) and **1.000** (n=17)
+- [x] Grounded accuracy at IoU 0.5 **≥ 0.90** — measured **1.000** (n=26)
   > With a perfect classifier the reasoning layer has no excuse. Anything below these numbers is a bug in B's code, and testing against the oracle isolates that cleanly from recognition error.
-- [ ] `pytest tests/test_validator.py` — a deliberately fabricated answer (interval absent from the timeline; duration off by 30 s) is **rejected**
-- [ ] Reasoning still degrades gracefully with `--label-noise 0.1` on the oracle (no crashes, no empty answers)
+- [x] `pytest tests/test_validator.py` — a deliberately fabricated answer (interval absent from the timeline; duration off by 30 s) is **rejected**, and the pipeline is shown never to emit a rejected answer
+- [x] Reasoning still degrades gracefully with `--label-noise 0.1` on the oracle (no crashes, no empty answers) — measured: 0 crashes, 0 empty answers, 0 missing predictions; accuracy by tier 0.917 / 0.941 / 0.917 / 0.833, grounded 0.962
+
+> **What these numbers do and do not show.** Measured 2026-09-11 by `python scripts/run_dev_eval.py` (with and without `--label-noise 0.1 --seed 0`; outputs in `results/phase2_dev_eval*.json`) and gated permanently by `tests/test_pipeline.py`. They were measured against the three synthetic oracle-style fixture subjects, not the real oracle: the real oracle needs the raw dataset, which is not on Member B's machine, and there are no gold questions for real subjects yet. A perfect score from a perfect classifier is expected by construction. It shows that routing, operators, and validator compute the right answer from a correct timeline, and says nothing about accuracy on real recordings. The 2 abstentions in the clean run are the two data-gap questions, where `N/A` is the correct answer. The first real numbers come in Phase 3.
 
 ---
 

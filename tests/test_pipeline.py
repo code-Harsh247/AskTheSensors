@@ -1,37 +1,31 @@
-"""Phase 1 exit criteria as executable checks: the full B-side pipeline runs
-end to end on a fixture track and emits 100% schema-valid output for 100% of
-questions. Answer *content* is not gated here -- routing lands in Phase 2.
-"""
-
-from pathlib import Path
+"""End-to-end checks on the dev set: well-formed output on every track, and
+the Phase 2 Member B exit criteria (docs/TASKS.md) measured against the
+oracle-style fixture tracks."""
 
 import pytest
 
-from ats.answer import baseline_answer
-from ats.aggregate import build_timeline, load_track
+from ats.aggregate import load_track
+from ats.answer import answer_all
 from ats.eval import evaluate
-from ats.serialize import (
-    read_answers_jsonl,
-    read_question_set,
-    write_answers,
-)
+from ats.eval.dev import FIXTURES_DIR, QUESTIONS_DIR, dev_subjects, run_dev_eval
+from ats.serialize import read_answers_jsonl, read_question_set, write_answers
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-QUESTIONS = REPO_ROOT / "data" / "questions_dev.json"
-FIXTURES = sorted((REPO_ROOT / "tests" / "fixtures").glob("track_*.jsonl"))
-
-
-def test_fixture_tracks_exist():
-    assert FIXTURES, "run scripts/make_dev_fixture.py to generate fixture tracks"
+SUBJECTS = dev_subjects()
+ALL_QUESTIONS = [
+    q for s in SUBJECTS for q in read_question_set(QUESTIONS_DIR / f"{s}.json")["questions"]
+]
+TRACKS = sorted(FIXTURES_DIR.glob("track_*.jsonl"))
 
 
-@pytest.mark.parametrize("track_path", FIXTURES, ids=lambda p: p.stem)
+def test_every_dev_subject_has_a_fixture_track():
+    assert len(SUBJECTS) >= 3
+    for subject in SUBJECTS:
+        assert (FIXTURES_DIR / f"track_{subject}.jsonl").exists()
+
+
+@pytest.mark.parametrize("track_path", TRACKS, ids=lambda p: p.stem)
 def test_every_question_gets_schema_valid_output(track_path, tmp_path):
-    timeline = build_timeline(load_track(track_path))
-    question_set = read_question_set(QUESTIONS)
-    questions = question_set["questions"]
-
-    answers = [baseline_answer(q["question_id"], timeline) for q in questions]
+    answers, _ = answer_all(ALL_QUESTIONS, load_track(track_path))
     out = tmp_path / "ans.jsonl"
 
     # write_answers and read_answers_jsonl both validate against the frozen
@@ -39,63 +33,31 @@ def test_every_question_gets_schema_valid_output(track_path, tmp_path):
     write_answers(answers, out, fmt="jsonl")
     reloaded = read_answers_jsonl(out)
 
-    assert len(reloaded) == len(questions)
-    assert {a["question_id"] for a in reloaded} == {q["question_id"] for q in questions}
+    assert [a["question_id"] for a in reloaded] == [q["question_id"] for q in ALL_QUESTIONS]
 
 
 def test_text_output_round_trips(tmp_path):
-    timeline = build_timeline(load_track(FIXTURES[0]))
-    question_set = read_question_set(QUESTIONS)
-    questions = question_set["questions"]
-    answers = [baseline_answer(q["question_id"], timeline) for q in questions]
+    subject = SUBJECTS[0]
+    questions = read_question_set(QUESTIONS_DIR / f"{subject}.json")["questions"]
+    answers, _ = answer_all(questions, load_track(FIXTURES_DIR / f"track_{subject}.jsonl"))
 
     out = tmp_path / "ans.txt"
-    write_answers(
-        answers, out, fmt="text", queries={q["question_id"]: q["text"] for q in questions}
-    )
+    write_answers(answers, out, fmt="text", queries={q["question_id"]: q["text"] for q in questions})
     text = out.read_text(encoding="utf-8")
 
     assert text.count("Answer:") == len(questions)
     assert text.count("Explanation:") == len(questions)
 
 
-def test_evaluate_runs_to_completion_and_returns_a_metrics_dict(tmp_path):
-    timeline = build_timeline(load_track(FIXTURES[0]))
-    question_set = read_question_set(QUESTIONS)
-    answers = [
-        baseline_answer(q["question_id"], timeline) for q in question_set["questions"]
-    ]
-
-    report = evaluate({"answers": answers}, question_set)
-
-    assert report["n_graded"] == len(question_set["questions"])
-    assert report["n_missing_predictions"] == 0
-    assert 0.0 <= report["overall_macro_accuracy"] <= 1.0
-    assert report["iou_threshold"] == 0.5
-    assert set(report["by_question_type"]) <= {
-        "identification",
-        "verification",
-        "duration",
-        "count",
-        "comparison",
-        "grounding",
-        "open_world",
-    }
-
-
 def test_missing_prediction_counts_as_wrong_not_skipped():
-    question_set = read_question_set(QUESTIONS)
-    report = evaluate({"answers": []}, question_set)
-
-    assert report["n_graded"] == len(question_set["questions"])
+    report = evaluate({"answers": []}, {"questions": ALL_QUESTIONS})
+    assert report["n_graded"] == len(ALL_QUESTIONS)
     assert report["n_missing_predictions"] == report["n_graded"]
     assert report["overall_micro_accuracy"] == 0.0
 
 
 def test_dev_question_set_covers_every_tier_and_edge_case():
-    question_set = read_question_set(QUESTIONS)
-    golds = [q["gold"] for q in question_set["questions"]]
-
+    golds = [q["gold"] for q in ALL_QUESTIONS]
     tier_of = {
         "identification": 1,
         "verification": 1,
@@ -110,11 +72,39 @@ def test_dev_question_set_covers_every_tier_and_edge_case():
         assert n >= 12, f"tier {tier} has only {n} questions; TASKS.md requires >= 12"
 
     answers = [g["answer"] for g in golds]
-    assert any(a == "Equal" for a in answers), "missing the comparison-tie edge case"
+    assert "Equal" in answers, "missing the comparison-tie edge case"
+    assert any(g.get("numeric_value") == 0.0 for g in golds), "missing the never-occurring-activity edge case"
+    assert "N/A" in answers, "missing the data-gap edge case"
     assert any(
-        g.get("numeric_value") == 0.0 for g in golds
-    ), "missing the never-occurring-activity edge case"
-    assert any(a == "N/A" for a in answers), "missing the data-gap edge case"
-    assert any(
-        len(g.get("cited_intervals", [])) > 1 for g in golds
+        g["question_type"] == "duration" and len(g.get("cited_intervals", [])) > 1 for g in golds
     ), "missing the multi-interval duration edge case"
+
+
+# --- Phase 2 exit criteria ---------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def oracle_report():
+    return run_dev_eval()
+
+
+def test_phase2_tier1_and_tier2_accuracy(oracle_report):
+    assert oracle_report["by_tier"]["1"]["accuracy"] >= 0.95
+    assert oracle_report["by_tier"]["2"]["accuracy"] >= 0.95
+
+
+def test_phase2_grounded_accuracy(oracle_report):
+    assert oracle_report["grounded_accuracy"] >= 0.90
+
+
+def test_no_answer_is_withheld_on_a_clean_oracle(oracle_report):
+    """With perfect labels every computed answer is grounded; a rejection here
+    would be a bug in an operator, not a property of the data."""
+    assert oracle_report["n_rejected_by_validator"] == 0
+
+
+def test_reasoning_degrades_gracefully_under_label_noise():
+    report = run_dev_eval(label_noise=0.1, seed=0)
+    assert report["n_graded"] == len(ALL_QUESTIONS)
+    assert report["n_missing_predictions"] == 0
+    assert report["n_empty_answers"] == 0
