@@ -214,6 +214,8 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
   - **routing error** (wrong operator selected regardless of track)
 
   > This is the single most valuable debugging instrument in the project. Without it, a wrong answer is just a wrong answer and both members argue about whose fault it is. With it, every failure has an owner within seconds.
+
+  > **Status (2026-09-11): built ahead of the swap.** `scripts/oracle_delta.py` (logic in `ats/eval/delta.py`, tests in `tests/test_oracle_delta.py`). "Aggregation error" is reported as **reasoning** (aggregation or operator, both Member B), and an answer wrong on the oracle but right on the real track is listed separately as a *masked bug*. "Right" includes grounding wherever the gold cites evidence, so evidence-only regressions are attributed too. Tracks are found by name, `<dir>/track_<subject>.jsonl`, one per question set in `data/questions_dev/`. **For Member A (2A.4):** write each dev subject's oracle and real tracks to `results/raw/tracks/oracle/` and `results/raw/tracks/full/` (both gitignored), then run `python scripts/oracle_delta.py --oracle-dir results/raw/tracks/oracle --real-dir results/raw/tracks/full`. Before a model exists, `--simulate-label-noise P` does a dry run; it is labelled SIMULATED throughout and written to `results/oracle_delta_simulated.*`. Only a real-track run counts toward the exit criteria below.
 - **3.3** Triage the delta table; each member leaves with an ordered fix list **for their own layer only**.
 
 ### Exit criteria

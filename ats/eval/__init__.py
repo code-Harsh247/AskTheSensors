@@ -35,7 +35,7 @@ def _predicted_number(answer: dict[str, Any]) -> float | None:
     return first_number(answer.get("answer", ""))
 
 
-def _score_one(answer: dict[str, Any] | None, gold: dict[str, Any]) -> bool:
+def score_answer(answer: dict[str, Any] | None, gold: dict[str, Any]) -> bool:
     """Apply the correctness rule for this answer's kind (PRD §7.3). A missing
     prediction counts as wrong rather than being skipped."""
     if answer is None:
@@ -78,7 +78,7 @@ def evaluate(pred: dict[str, Any], gold: dict[str, Any]) -> dict[str, Any]:
             skipped += 1
             continue
         answer = answers_by_id.get(question["question_id"])
-        graded.append((gold_block, answer, _score_one(answer, gold_block)))
+        graded.append((gold_block, answer, score_answer(answer, gold_block)))
 
     if not graded:
         return {
