@@ -26,7 +26,7 @@ These are settled **before** anyone writes logic, and are changed only by joint 
 | Headline IoU threshold | **τ = 0.5** | Pre-registered *before* seeing results, so the choice cannot be tuned to flatter our numbers. The full 0.1–0.9 sweep is reported anyway as Figure 3 |
 | Duration tolerance | `max(2 × window_hop, 10% relative)` | Derived from A's Phase 1 hop, not invented. Pre-registered for the same reason |
 | Target device | **Laptop CPU** — AMD Ryzen 7 5800H (8C/16T), 16 GB RAM, Windows 11 64-bit, single-process CPU inference (no GPU) | Chosen for reproducibility with no cross-compilation or extra hardware; PRD §6.2 explicitly allows "a laptop processor" and says clear, consistent reporting matters more than which hardware is chosen |
-| Window / hop | *(A decides in Phase 1, then frozen and communicated to B)* | Hop sets the temporal resolution of every interval boundary B produces |
+| Window / hop | **4.0s / 2.0s** (50% overlap), frozen 2026-09-10 | A window must fit inside one ~20s ExtraSensory recording burst with room to spare (aggregation never segments across a gap — see `ats/aggregate.py`), and 4s covers several gait cycles even at walking cadence. The 2s hop feeds directly into the duration tolerance below. See `ats/windowing.py` for the full rationale |
 
 **Naming convention for the package:** `ats/` (Ask The Sensors).
 
@@ -75,7 +75,7 @@ These are settled **before** anyone writes logic, and are changed only by joint 
   - the exact seven label strings, in canonical order
   - a question set **without** a gold block validates successfully
 - [x] `python -m ats.answer --help` and `python -m ats.eval --help` both exit 0
-- [ ] `pip install -e .` succeeds from a clean environment on both members' machines — **done on this machine; teammate still needs to verify on theirs**
+- [x] `pip install -e .` succeeds from a clean environment on both members' machines — verified on Member A's machine 2026-09-10 (fresh `.venv`, Windows Store Python 3.11.9): `pip install -e ".[dev]"` clean, `pytest` 50/50 passing, both CLI `--help` entry points exit 0
 - [x] Target device recorded in §0 of this document
 - [x] `docs/CITATIONS.md` exists with its first entry, establishing the append-as-you-go habit from commit one
 
@@ -131,12 +131,12 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 ### Exit criteria
 
 **Member A**
-- [ ] `pytest tests/test_preprocess.py` passes, asserting on synthetic signals:
+- [x] `pytest tests/test_preprocess.py` passes, asserting on synthetic signals:
   - jittered input timestamps resample to **exactly** 25 Hz, with zero duplicate or backward timestamps
   - a known 1.5 Hz sinusoid survives resampling within a stated tolerance (proves we did not destroy gait-band content)
   - an injected gap produces `coverage < 1` on **exactly** the overlapping windows and no others
-- [ ] `pytest tests/test_splits.py` asserts **zero subject overlap** across train/val/test
-- [ ] `python -m ats.oracle --subject <id> --out track.jsonl` produces a file that validates against `window_track.schema.json`
+- [x] `pytest tests/test_splits.py` asserts **zero subject overlap** across train/val/test — verified both on synthetic subject IDs and on the real 60-subject split in `splits/subject_splits.json`
+- [x] `python -m ats.oracle --subject <id> --out track.jsonl` produces a file that validates against `window_track.schema.json` — verified both against a controlled synthetic fixture (`tests/test_oracle.py`) and end-to-end against a real ExtraSensory subject (21,505 windows, 100% schema-valid; see `tests/fixtures/track_subj_real_00EABED2.jsonl`)
 
 **Member B**
 - [x] `python -m ats.answer --questions data/questions_dev.json --track <track> --out ans.txt` produces **100% schema-valid output for 100% of questions**. Content correctness is *not* gated yet — well-formedness is. Gated automatically by `tests/test_pipeline.py`.
@@ -147,7 +147,7 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 
 ### Artifacts crossing the boundary
 
-- **A → B:** `ats/oracle.py` + one committed sample track + the frozen window/hop numbers
+- **A → B:** `ats/oracle.py` + one committed sample track (`tests/fixtures/track_subj_real_00EABED2.jsonl`, regenerable via `scripts/make_sample_track.py`) + the frozen window/hop numbers (4.0s / 2.0s) — **delivered 2026-09-10**
 - **B → A:** `data/questions_dev.json` (**frozen at the end of this phase** — later additions go to `questions_dev_v2` so A's robustness and Pareto curves stay comparable across the project) + the importable `evaluate()`
 
 ---
