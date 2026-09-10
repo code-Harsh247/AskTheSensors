@@ -11,6 +11,13 @@ contiguous run of windows claims `attribution_period_s` from its first window
 (clipped where the next run starts), consecutive same-activity minutes merge
 into one bout, and a missing minute stays a real gap. Decided by the team on
 2026-09-11 (docs/TASKS.md §0).
+
+For the same reason a burst takes one label: the class with the largest
+summed probability across its windows. A label change inside a minute cannot
+be represented in per-minute ground truth, and pooling stops a few flipped
+windows from surviving smoothing or claiming the unrecorded rest of their
+minute. Continuous stretches longer than one period keep window-level
+smoothing, so a real change of activity there is preserved.
 """
 
 from __future__ import annotations
@@ -174,6 +181,11 @@ def _runs(
     return runs
 
 
+def _pooled_label(chunk: Sequence[dict[str, Any]]) -> str:
+    totals = [sum(w["probs"][i] for w in chunk) for i in range(len(CANONICAL_CLASSES))]
+    return CANONICAL_CLASSES[max(range(len(totals)), key=totals.__getitem__)]
+
+
 def _seam(previous: dict[str, Any], following: dict[str, Any]) -> float:
     """Boundary between two adjacent windows: the midpoint of their overlap.
     With overlapping windows, ending one run at its last window's end would
@@ -193,7 +205,8 @@ def build_timeline(
 
     Windows whose `coverage` falls below `min_coverage` are dropped as
     unreliable, which can itself open a gap. Pass `attribution_period_s=None`
-    to keep intervals to the recorded signal only.
+    to keep intervals to the recorded signal only, with window-level labels
+    inside bursts.
     """
     ordered = sorted(windows, key=lambda w: w["t_start"])
     reliable = [w for w in ordered if w["coverage"] >= min_coverage]
@@ -215,6 +228,12 @@ def build_timeline(
             end = min(end, next_start)
             if next_start - end > _EPS:
                 gaps.append((round(end, 3), round(next_start, 3)))
+
+        if attribution_period_s is not None and chunk[-1]["t_end"] - start <= attribution_period_s + _EPS:
+            label = _pooled_label(chunk)
+            k = CANONICAL_CLASSES.index(label)
+            pieces.append((label, start, end, [w["probs"][k] for w in chunk]))
+            continue
 
         runs = _runs(chunk, smoothing_windows)
         for j, (label, members) in enumerate(runs):

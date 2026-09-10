@@ -11,8 +11,10 @@ Usage:
     # Phase 3, with real tracks from the trained model:
     python scripts/oracle_delta.py --oracle-dir results/raw/tracks/oracle --real-dir results/raw/tracks/full
 
-    # Dry run before a real model exists (clearly labelled as simulated):
-    python scripts/oracle_delta.py --simulate-label-noise 0.1
+    # Dry run before a real model exists (clearly labelled as simulated).
+    # Whole-burst errors are the realistic case; isolated window flips are
+    # absorbed by the aggregation's per-burst vote.
+    python scripts/oracle_delta.py --simulate-burst-noise 0.1
 """
 
 from __future__ import annotations
@@ -29,7 +31,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Attribute every lost answer to the layer that caused it.")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--real-dir", type=Path, help="Directory of real-model track_<subject>.jsonl files.")
-    source.add_argument("--simulate-label-noise", type=float, help="Dry run: corrupt the oracle instead.")
+    source.add_argument("--simulate-label-noise", type=float, help="Dry run: mislabel individual oracle windows.")
+    source.add_argument("--simulate-burst-noise", type=float, help="Dry run: mislabel whole oracle bursts.")
     parser.add_argument("--oracle-dir", type=Path, default=FIXTURES_DIR)
     parser.add_argument("--questions-dir", type=Path, default=QUESTIONS_DIR)
     parser.add_argument("--seed", type=int, default=0)
@@ -39,6 +42,7 @@ def main() -> None:
     report = run_delta(
         real_dir=args.real_dir,
         simulate_label_noise=args.simulate_label_noise,
+        simulate_burst_noise=args.simulate_burst_noise,
         seed=args.seed,
         questions_dir=args.questions_dir,
         oracle_dir=args.oracle_dir,

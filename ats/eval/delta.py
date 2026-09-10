@@ -27,7 +27,7 @@ from typing import Any, Sequence
 from ats.aggregate import load_track
 from ats.answer import answer_all
 from ats.eval import QUESTION_TYPES, score_answer
-from ats.eval.dev import FIXTURES_DIR, QUESTIONS_DIR, dev_subjects, perturb_labels
+from ats.eval.dev import FIXTURES_DIR, QUESTIONS_DIR, dev_subjects, perturb_bursts, perturb_labels
 from ats.eval.metrics import is_grounded_and_correct
 from ats.routing import route
 from ats.serialize import read_question_set
@@ -128,15 +128,19 @@ def run_delta(
     *,
     real_dir: Path | None = None,
     simulate_label_noise: float | None = None,
+    simulate_burst_noise: float | None = None,
     seed: int = 0,
     questions_dir: Path = QUESTIONS_DIR,
     oracle_dir: Path = FIXTURES_DIR,
 ) -> dict[str, Any]:
     """Compare every dev subject's oracle track with its real track. Pass
-    exactly one of `real_dir` (a directory of track_<subject>.jsonl files)
-    or `simulate_label_noise` (a dry run against a corrupted oracle)."""
-    if (real_dir is None) == (simulate_label_noise is None):
-        raise ValueError("pass exactly one of real_dir or simulate_label_noise")
+    exactly one source: `real_dir` (a directory of track_<subject>.jsonl
+    files), or a dry run against a corrupted oracle -- `simulate_label_noise`
+    flips individual windows, `simulate_burst_noise` misclassifies whole
+    bursts, the correlated error a real classifier makes."""
+    sources = [s for s in (real_dir, simulate_label_noise, simulate_burst_noise) if s is not None]
+    if len(sources) != 1:
+        raise ValueError("pass exactly one of real_dir, simulate_label_noise or simulate_burst_noise")
 
     subjects = dev_subjects(questions_dir)
     rows: list[dict[str, Any]] = []
@@ -146,15 +150,19 @@ def run_delta(
         oracle_windows = load_track(_track(oracle_dir, subject))
         if real_dir is not None:
             real_windows = load_track(_track(real_dir, subject))
-        else:
+        elif simulate_label_noise is not None:
             real_windows = perturb_labels(oracle_windows, simulate_label_noise, seed + index)
+        else:
+            real_windows = perturb_bursts(oracle_windows, simulate_burst_noise, seed + index)
         subject_rows, withheld[subject] = compare_subject(subject, questions, oracle_windows, real_windows)
         rows.extend(subject_rows)
 
     if real_dir is not None:
         source = str(real_dir)
+    elif simulate_label_noise is not None:
+        source = f"SIMULATED: the oracle track with {simulate_label_noise:.0%} of windows mislabelled (seed {seed})"
     else:
-        source = f"SIMULATED: the oracle track with {simulate_label_noise:.0%} label noise (seed {seed})"
+        source = f"SIMULATED: the oracle track with {simulate_burst_noise:.0%} of bursts mislabelled (seed {seed})"
     return {
         "real_source": source,
         "oracle_source": str(oracle_dir),

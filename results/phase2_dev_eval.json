@@ -1,5 +1,6 @@
 {
   "absolute_tolerance_s": 4.0,
+  "burst_noise": 0.0,
   "by_question_type": {
     "comparison": {
       "accuracy": 1.0,

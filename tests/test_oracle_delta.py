@@ -35,12 +35,17 @@ def test_identical_tracks_lose_nothing():
 
 @pytest.fixture(scope="module")
 def noisy():
-    return run_delta(simulate_label_noise=0.2, seed=0)
+    return run_delta(simulate_burst_noise=0.2, seed=0)
+
+
+def test_isolated_window_flips_are_absorbed_by_the_burst_vote():
+    overall = run_delta(simulate_label_noise=0.2, seed=0)["by_question_type"]["overall"]
+    assert overall["real_right"] == overall["n"]
 
 
 def test_noise_on_a_perfect_oracle_is_blamed_only_on_recognition(noisy):
     overall = noisy["by_question_type"]["overall"]
-    assert overall["real_right"] < overall["n"], "20% label noise should cost something"
+    assert overall["real_right"] < overall["n"], "misclassifying 20% of bursts should cost something"
     assert overall["losses"]["recognition"] == overall["n"] - overall["real_right"]
     assert overall["losses"]["routing"] == overall["losses"]["reasoning"] == 0
 
@@ -108,3 +113,5 @@ def test_exactly_one_real_source_is_required():
         run_delta()
     with pytest.raises(ValueError):
         run_delta(real_dir=FIXTURES_DIR, simulate_label_noise=0.1)
+    with pytest.raises(ValueError):
+        run_delta(simulate_label_noise=0.1, simulate_burst_noise=0.1)

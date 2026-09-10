@@ -103,8 +103,9 @@ def test_no_answer_is_withheld_on_a_clean_oracle(oracle_report):
     assert oracle_report["n_rejected_by_validator"] == 0
 
 
-def test_reasoning_degrades_gracefully_under_label_noise():
-    report = run_dev_eval(label_noise=0.1, seed=0)
+@pytest.mark.parametrize("noise", [{"label_noise": 0.1}, {"burst_noise": 0.1}], ids=["windows", "bursts"])
+def test_reasoning_degrades_gracefully_under_noise(noise):
+    report = run_dev_eval(seed=0, **noise)
     assert report["n_graded"] == len(ALL_QUESTIONS)
     assert report["n_missing_predictions"] == 0
     assert report["n_empty_answers"] == 0

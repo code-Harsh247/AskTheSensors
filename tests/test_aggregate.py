@@ -123,9 +123,41 @@ def test_attribution_is_clipped_where_the_next_burst_starts_early():
     assert spans(timeline) == [("SITTING", 0.0, 49.0), ("WALKING", 49.0, 109.0)]
 
 
-def test_activity_change_inside_a_burst_attributes_the_rest_of_the_minute_to_the_last_run():
-    windows = [make_window(i, 2.0 * i, "SITTING" if i < 5 else "WALKING") for i in range(10)]
-    assert spans(build_timeline(windows)) == [("SITTING", 0.0, 11.0), ("WALKING", 11.0, 60.0)]
+def test_a_burst_takes_one_label_by_pooled_vote():
+    """ExtraSensory labels each minute once, so a label change inside a burst
+    cannot be scored; the whole burst takes its pooled majority."""
+    windows = [make_window(i, 2.0 * i, "SITTING" if i < 6 else "WALKING") for i in range(10)]
+    assert spans(build_timeline(windows)) == [("SITTING", 0.0, 60.0)]
+
+
+def test_the_pooled_vote_weighs_confidence_not_window_count():
+    # 4 confident walking windows outweigh 6 hesitant sitting ones:
+    # walking 4*0.9 + 6*(0.7/6) = 4.3 against sitting 6*0.3 + 4*(0.1/6) = 1.87
+    windows = [make_window(i, 2.0 * i, "WALKING") for i in range(4)] + [
+        make_window(i, 2.0 * i, "SITTING", confidence=0.3) for i in range(4, 10)
+    ]
+    assert spans(build_timeline(windows)) == [("WALKING", 0.0, 60.0)]
+
+
+def test_flipped_edge_windows_neither_survive_nor_claim_the_rest_of_the_minute():
+    """The failure the oracle-delta dry run exposed: two edge windows flipped
+    to different classes tied under smoothing and survived, and a flipped last
+    window claimed the unrecorded tail of its minute."""
+    windows = [make_window(i, 2.0 * i, "WALKING") for i in range(10)]
+    windows[0] = make_window(0, 0.0, "BICYCLING")
+    windows[1] = make_window(1, 2.0, "RUNNING")
+    windows[9] = make_window(9, 18.0, "STANDING_MOVING")
+    assert spans(build_timeline(windows)) == [("WALKING", 0.0, 60.0)]
+
+
+def test_long_continuous_recordings_keep_window_level_changes():
+    """Pooling applies to bursts only; a continuous stretch longer than one
+    minute still shows a real change of activity."""
+    windows = contiguous(["SITTING"] * 5 + ["WALKING"] * 5)
+    assert spans(build_timeline(windows, smoothing_windows=1)) == [
+        ("SITTING", 0.0, 50.0),
+        ("WALKING", 50.0, 100.0),
+    ]
 
 
 def test_interval_and_gap_lookup():

@@ -6,6 +6,7 @@ fixture track, scores them, and writes a small summary to results/.
 Usage:
     python scripts/run_dev_eval.py
     python scripts/run_dev_eval.py --label-noise 0.1 --out results/phase2_dev_eval_noise10.json
+    python scripts/run_dev_eval.py --burst-noise 0.1 --out results/phase2_dev_eval_burst10.json
 """
 
 from __future__ import annotations
@@ -19,12 +20,13 @@ from ats.eval.dev import REPO_ROOT, run_dev_eval
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--label-noise", type=float, default=0.0)
+    parser.add_argument("--label-noise", type=float, default=0.0, help="Fraction of individual windows mislabelled.")
+    parser.add_argument("--burst-noise", type=float, default=0.0, help="Fraction of whole bursts mislabelled.")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", default=str(REPO_ROOT / "results" / "phase2_dev_eval.json"))
     args = parser.parse_args()
 
-    report = run_dev_eval(label_noise=args.label_noise, seed=args.seed)
+    report = run_dev_eval(label_noise=args.label_noise, burst_noise=args.burst_noise, seed=args.seed)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -32,7 +34,10 @@ def main() -> None:
         json.dump(report, f, indent=2, sort_keys=True)
         f.write("\n")
 
-    print(f"subjects: {', '.join(report['subjects'])}   label noise: {args.label_noise}")
+    print(
+        f"subjects: {', '.join(report['subjects'])}   "
+        f"window noise: {args.label_noise}   burst noise: {args.burst_noise}"
+    )
     for tier, row in sorted(report["by_tier"].items()):
         print(f"  tier {tier}: {row['accuracy']:.3f}  (n={row['n']})")
     print(f"  grounded accuracy @ IoU {report['iou_threshold']}: {report['grounded_accuracy']:.3f}  (n={report['n_grounded_rows']})")
