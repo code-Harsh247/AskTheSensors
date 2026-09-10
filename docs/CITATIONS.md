@@ -43,6 +43,16 @@ Format per entry: what it is, where it's from, which file(s) use it, and what it
 - **Source:** https://matplotlib.org/
 - **Used in:** `scripts/make_fig2.py` -- the confusion-matrix heatmap (PRD Fig. 2, docs/TASKS.md 2A.5).
 
+### Qwen2.5-0.5B-Instruct
+- **What:** 0.5B-parameter instruction-tuned small language model, Apache-2.0 licence.
+- **Source:** Qwen Team, "Qwen2.5 Technical Report", arXiv:2412.15115 (2024). Weights: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct, pinned to revision `7ae557604adf67be50417f59c2c2f167def9a775` (about 1.0 GB, downloaded to the local Hugging Face cache, not committed).
+- **Used in:** `ats/slm.py` -- the question parser (docs/TASKS.md 4B.1-4B.2). Its only output is a JSON operator call checked against a closed schema; it never sees the recording and never produces an answer. Chosen as the smallest model on the PRD §8.1 suggested list.
+
+### transformers (Python library)
+- **What:** Hugging Face model loading and generation library.
+- **Source:** https://github.com/huggingface/transformers
+- **Used in:** `ats/slm.py` -- loads the pinned Qwen2.5 weights and runs greedy decoding on CPU.
+
 ---
 
 ## Still to review

@@ -1,0 +1,25 @@
+{
+  "description": "Held-out routing questions for the Phase 4 router ablation. Items with source 'prd' are taken from the challenge brief's own scenario (PRD 1.1), so they are independent of both routers. Items with source 'author' were written by Member B, who also wrote the rule router, and are deliberately phrased unlike the dev-set templates; treat their scores as optimistic for the rules. Each item lists only the parts of the call that decide the answer.",
+  "items": [
+    {"id": "prd_morning_walk", "source": "prd", "text": "Did she take her usual morning walk?", "expected": {"op": "verify", "activities": ["WALKING"]}},
+    {"id": "prd_strenuous_noon", "source": "prd", "text": "She mentioned feeling unsteady around noon, so was she doing anything strenuous at that time?", "expected": {"op": "open_world", "predicate": "strenuous"}},
+    {"id": "prd_walking_trend", "source": "prd", "text": "Is her walking time increasing from one week to the next?", "expected": {"op": "open_world", "predicate": null}},
+    {"id": "prd_running", "source": "prd", "text": "Is the user running?", "expected": {"op": "verify", "activities": ["RUNNING"]}},
+    {"id": "prd_prolonged", "source": "prd", "text": "Did the user lie down for a prolonged period?", "expected": {"op": "open_world", "predicate": "prolonged", "activities": ["LYING"]}},
+    {"id": "prd_wheeled", "source": "prd", "text": "Was the user using a wheeled or pedal-based mode of movement?", "expected": {"op": "open_world", "predicate": "wheeled"}},
+
+    {"id": "author_bicycle_any", "source": "author", "text": "Was the person on a bicycle at any point?", "expected": {"op": "verify", "activities": ["BICYCLING"]}},
+    {"id": "author_jog_minutes", "source": "author", "text": "Roughly how many minutes of jogging are in this recording?", "expected": {"op": "duration", "activities": ["RUNNING"]}},
+    {"id": "author_how_much_sitting", "source": "author", "text": "In total, how much sitting happened?", "expected": {"op": "duration", "activities": ["SITTING"]}},
+    {"id": "author_walk_start", "source": "author", "text": "When did the walking start?", "expected": {"op": "onset", "activities": ["WALKING"]}},
+    {"id": "author_count_episodes", "source": "author", "text": "Count the separate running episodes.", "expected": {"op": "count", "activities": ["RUNNING"]}},
+    {"id": "author_sit_vs_walk", "source": "author", "text": "Did the user sit more than they walked?", "expected": {"op": "compare", "activities": ["SITTING", "WALKING"]}},
+    {"id": "author_where_cycling", "source": "author", "text": "Where in the recording is the cycling?", "expected": {"op": "ground", "activities": ["BICYCLING"]}},
+    {"id": "author_two_minutes_in", "source": "author", "text": "At 2 minutes in, what was she up to?", "expected": {"op": "identify", "time_s": 120.0}},
+    {"id": "author_lying_for_ages", "source": "author", "text": "Was she lying down for ages?", "expected": {"op": "open_world", "predicate": "prolonged", "activities": ["LYING"]}},
+    {"id": "author_vigorous", "source": "author", "text": "Any vigorous exercise?", "expected": {"op": "open_world", "predicate": "strenuous"}},
+    {"id": "author_sitting_around", "source": "author", "text": "Was she mostly sitting around or up and about?", "expected": {"op": "open_world", "predicate": "activity_balance"}},
+    {"id": "author_ever_run", "source": "author", "text": "Did she ever run?", "expected": {"op": "verify", "activities": ["RUNNING"]}},
+    {"id": "author_bike_ride", "source": "author", "text": "How long did the bike ride last?", "expected": {"op": "duration", "activities": ["BICYCLING"]}}
+  ]
+}

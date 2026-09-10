@@ -16,6 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# The SLM question parser (ats/slm.py); the rule router needs none of this.
+slm = ["transformers>=4.44,<5"]
 
 [tool.setuptools.packages.find]
 include = ["ats*"]

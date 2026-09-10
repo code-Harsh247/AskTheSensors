@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from ats.aggregate import Timeline, build_timeline, load_track
 from ats.evidence import CHANNELS, CHANNELS_TEXT, MODALITY, MODALITY_TEXT
@@ -19,6 +19,8 @@ from ats.operators import Finding, abstain, execute
 from ats.routing import OperatorCall, route
 from ats.serialize import format_intervals, read_question_set, write_answers
 from ats.validator import grounding_problems, validate_grounding
+
+Router = Callable[[str], OperatorCall]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", help="Model config to use for recognition, e.g. 'full', 'quant8'.")
     parser.add_argument("--out", required=True, help="Path to write answers to.")
     parser.add_argument("--format", choices=["text", "jsonl"], default="text", help="Output format.")
+    parser.add_argument(
+        "--router",
+        choices=["rules", "slm"],
+        default="rules",
+        help="Question parser: the rule router, or the SLM with the rule router as fallback.",
+    )
     return parser
 
 
@@ -56,11 +64,14 @@ def to_answer(question_id: str, call: OperatorCall, finding: Finding) -> dict[st
 
 
 def answer_question(
-    question: dict[str, Any], timeline: Timeline, windows: Sequence[dict[str, Any]]
+    question: dict[str, Any],
+    timeline: Timeline,
+    windows: Sequence[dict[str, Any]],
+    router: Router = route,
 ) -> tuple[dict[str, Any], list[str]]:
     """Returns the answer to emit and any grounding problems found in the
     answer that was originally computed."""
-    call = route(question["text"])
+    call = router(question["text"])
     answer = to_answer(question["question_id"], call, execute(call, timeline, windows))
     problems = grounding_problems(answer, call, timeline)
     if problems:
@@ -74,13 +85,15 @@ def answer_question(
 
 
 def answer_all(
-    questions: Sequence[dict[str, Any]], windows: Sequence[dict[str, Any]]
+    questions: Sequence[dict[str, Any]],
+    windows: Sequence[dict[str, Any]],
+    router: Router = route,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     timeline = build_timeline(windows)
     answers: list[dict[str, Any]] = []
     rejections: list[dict[str, Any]] = []
     for question in questions:
-        answer, problems = answer_question(question, timeline, windows)
+        answer, problems = answer_question(question, timeline, windows, router)
         answers.append(answer)
         if problems:
             rejections.append({"question_id": question["question_id"], "problems": problems})
@@ -98,12 +111,19 @@ def main(argv: list[str] | None = None) -> None:
 
     windows = load_track(args.track)
     questions = read_question_set(args.questions)["questions"]
-    answers, rejections = answer_all(questions, windows)
+    router: Router = route
+    if args.router == "slm":
+        from ats.slm import SLMRouter
+
+        router = SLMRouter()
+    answers, rejections = answer_all(questions, windows, router)
     write_answers(answers, args.out, fmt=args.format, queries={q["question_id"]: q["text"] for q in questions})
 
     for rejection in rejections:
         print(f"withheld {rejection['question_id']}: {'; '.join(rejection['problems'])}", file=sys.stderr)
     print(f"answered {len(answers)} questions ({len(rejections)} withheld by the grounding validator) -> {args.out}")
+    if args.router == "slm":
+        print(f"SLM parsed {router.n_parsed} questions; the rule router took over for {router.n_fallback}")
 
 
 if __name__ == "__main__":

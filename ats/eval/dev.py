@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from ats.aggregate import load_track
-from ats.answer import answer_all
+from ats.answer import Router, answer_all
 from ats.eval import evaluate
+from ats.routing import route
 from ats.serialize import read_question_set
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -84,6 +85,7 @@ def run_dev_eval(
     seed: int = 0,
     questions_dir: Path = QUESTIONS_DIR,
     fixtures_dir: Path = FIXTURES_DIR,
+    router: Router = route,
 ) -> dict[str, Any]:
     subjects = dev_subjects(questions_dir)
     all_answers: list[dict[str, Any]] = []
@@ -97,7 +99,7 @@ def run_dev_eval(
             windows = perturb_labels(windows, label_noise, seed + index)
         if burst_noise:
             windows = perturb_bursts(windows, burst_noise, seed + index)
-        answers, subject_rejections = answer_all(questions, windows)
+        answers, subject_rejections = answer_all(questions, windows, router)
         all_answers.extend(answers)
         all_questions.extend(questions)
         rejections.extend(subject_rejections)
