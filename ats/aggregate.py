@@ -4,6 +4,13 @@ Owned by Member B (docs/TASKS.md task 1B.1). Temporal smoothing and
 segmentation live here rather than in the recognition backbone, because the
 interval boundaries produced here are exactly what grounding IoU is scored
 against.
+
+Minute attribution. ExtraSensory records one ~20 s burst per labeled minute,
+and its labels are per minute, so each burst stands for its whole minute: a
+contiguous run of windows claims `attribution_period_s` from its first window
+(clipped where the next run starts), consecutive same-activity minutes merge
+into one bout, and a missing minute stays a real gap. Decided by the team on
+2026-09-11 (docs/TASKS.md §0).
 """
 
 from __future__ import annotations
@@ -19,6 +26,8 @@ from ats.contracts import CANONICAL_CLASSES, validate_window_track
 
 DEFAULT_SMOOTHING_WINDOWS = 5
 DEFAULT_MIN_COVERAGE = 0.5
+EXTRASENSORY_CYCLE_S = 60.0
+_EPS = 1e-6
 
 
 @dataclass(frozen=True)
@@ -34,6 +43,9 @@ class Interval:
 
     def as_tuple(self) -> tuple[float, float]:
         return (self.t_start, self.t_end)
+
+    def contains(self, t: float) -> bool:
+        return self.t_start <= t < self.t_end
 
 
 @dataclass(frozen=True)
@@ -76,6 +88,12 @@ class Timeline:
             return None
         return (self.intervals[0].t_start, self.intervals[-1].t_end)
 
+    def interval_at(self, t: float) -> Interval | None:
+        return next((iv for iv in self.intervals if iv.contains(t)), None)
+
+    def gap_at(self, t: float) -> tuple[float, float] | None:
+        return next((gap for gap in self.gaps if gap[0] <= t < gap[1]), None)
+
 
 def load_track(path: str | Path) -> list[dict[str, Any]]:
     """Read a window-track JSONL file, validating every record against the
@@ -95,15 +113,14 @@ def load_track(path: str | Path) -> list[dict[str, Any]]:
     return entries
 
 
-def _label_of(entry: dict[str, Any]) -> tuple[str, float]:
+def _label_of(entry: dict[str, Any]) -> str:
     probs = entry["probs"]
-    best = max(range(len(probs)), key=lambda i: probs[i])
-    return CANONICAL_CLASSES[best], probs[best]
+    return CANONICAL_CLASSES[max(range(len(probs)), key=probs.__getitem__)]
 
 
 def _infer_gap_tolerance(windows: Sequence[dict[str, Any]]) -> float:
     """Half the median window-to-window step. Derived from the track rather
-    than hard-coded, because the window hop is Member A's Phase 1 decision."""
+    than hard-coded, because the window hop is Member A's decision."""
     if len(windows) < 2:
         return 0.0
     steps = [b["t_start"] - a["t_start"] for a, b in zip(windows, windows[1:])]
@@ -115,21 +132,17 @@ def _infer_gap_tolerance(windows: Sequence[dict[str, Any]]) -> float:
 
 def _split_on_gaps(
     windows: Sequence[dict[str, Any]], tolerance: float
-) -> tuple[list[list[dict[str, Any]]], list[tuple[float, float]]]:
+) -> list[list[dict[str, Any]]]:
     chunks: list[list[dict[str, Any]]] = []
-    gaps: list[tuple[float, float]] = []
     current: list[dict[str, Any]] = []
     for entry in windows:
-        if current:
-            previous_end = current[-1]["t_end"]
-            if entry["t_start"] - previous_end > tolerance:
-                gaps.append((previous_end, entry["t_start"]))
-                chunks.append(current)
-                current = []
+        if current and entry["t_start"] - current[-1]["t_end"] > tolerance:
+            chunks.append(current)
+            current = []
         current.append(entry)
     if current:
         chunks.append(current)
-    return chunks, gaps
+    return chunks
 
 
 def _mode_smooth(labels: Sequence[str], k: int) -> list[str]:
@@ -148,17 +161,39 @@ def _mode_smooth(labels: Sequence[str], k: int) -> list[str]:
     return smoothed
 
 
+def _runs(
+    chunk: Sequence[dict[str, Any]], smoothing_windows: int
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    smoothed = _mode_smooth([_label_of(w) for w in chunk], smoothing_windows)
+    runs: list[tuple[str, list[dict[str, Any]]]] = []
+    for entry, label in zip(chunk, smoothed):
+        if runs and runs[-1][0] == label:
+            runs[-1][1].append(entry)
+        else:
+            runs.append((label, [entry]))
+    return runs
+
+
+def _seam(previous: dict[str, Any], following: dict[str, Any]) -> float:
+    """Boundary between two adjacent windows: the midpoint of their overlap.
+    With overlapping windows, ending one run at its last window's end would
+    make it overlap the next run and double-count that time."""
+    return (previous["t_end"] + following["t_start"]) / 2.0
+
+
 def build_timeline(
     windows: Iterable[dict[str, Any]],
     *,
     smoothing_windows: int = DEFAULT_SMOOTHING_WINDOWS,
     min_coverage: float = DEFAULT_MIN_COVERAGE,
     gap_tolerance_s: float | None = None,
+    attribution_period_s: float | None = EXTRASENSORY_CYCLE_S,
 ) -> Timeline:
     """Collapse per-window predictions into contiguous activity intervals.
 
     Windows whose `coverage` falls below `min_coverage` are dropped as
-    unreliable, which can itself open a gap. Segmentation never spans a gap.
+    unreliable, which can itself open a gap. Pass `attribution_period_s=None`
+    to keep intervals to the recorded signal only.
     """
     ordered = sorted(windows, key=lambda w: w["t_start"])
     reliable = [w for w in ordered if w["coverage"] >= min_coverage]
@@ -166,30 +201,43 @@ def build_timeline(
         return Timeline(intervals=(), gaps=())
 
     tolerance = _infer_gap_tolerance(ordered) if gap_tolerance_s is None else gap_tolerance_s
-    chunks, gaps = _split_on_gaps(reliable, tolerance)
+    chunks = _split_on_gaps(reliable, tolerance)
 
-    intervals: list[Interval] = []
-    for chunk in chunks:
-        labelled = [_label_of(w) for w in chunk]
-        smoothed = _mode_smooth([label for label, _ in labelled], smoothing_windows)
+    pieces: list[tuple[str, float, float, list[float]]] = []
+    gaps: list[tuple[float, float]] = []
+    for i, chunk in enumerate(chunks):
+        start = chunk[0]["t_start"]
+        end = chunk[-1]["t_end"]
+        if attribution_period_s is not None:
+            end = max(end, start + attribution_period_s)
+        if i + 1 < len(chunks):
+            next_start = chunks[i + 1][0]["t_start"]
+            end = min(end, next_start)
+            if next_start - end > _EPS:
+                gaps.append((round(end, 3), round(next_start, 3)))
 
-        run_start = 0
-        for i in range(1, len(chunk) + 1):
-            if i < len(chunk) and smoothed[i] == smoothed[run_start]:
-                continue
-            members = chunk[run_start:i]
-            label = smoothed[run_start]
-            confidences = [
-                w["probs"][CANONICAL_CLASSES.index(label)] for w in members
-            ]
-            intervals.append(
-                Interval(
-                    activity=label,
-                    t_start=members[0]["t_start"],
-                    t_end=members[-1]["t_end"],
-                    mean_confidence=sum(confidences) / len(confidences),
-                )
-            )
-            run_start = i
+        runs = _runs(chunk, smoothing_windows)
+        for j, (label, members) in enumerate(runs):
+            run_start = start if j == 0 else _seam(runs[j - 1][1][-1], members[0])
+            run_end = end if j == len(runs) - 1 else _seam(members[-1], runs[j + 1][1][0])
+            k = CANONICAL_CLASSES.index(label)
+            pieces.append((label, run_start, run_end, [w["probs"][k] for w in members]))
 
-    return Timeline(intervals=tuple(intervals), gaps=tuple(gaps))
+    merged: list[list[Any]] = []
+    for label, run_start, run_end, confidences in pieces:
+        if merged and merged[-1][0] == label and abs(run_start - merged[-1][2]) <= _EPS:
+            merged[-1][2] = run_end
+            merged[-1][3].extend(confidences)
+        else:
+            merged.append([label, run_start, run_end, list(confidences)])
+
+    intervals = tuple(
+        Interval(
+            activity=label,
+            t_start=round(run_start, 3),
+            t_end=round(run_end, 3),
+            mean_confidence=sum(confidences) / len(confidences),
+        )
+        for label, run_start, run_end, confidences in merged
+    )
+    return Timeline(intervals=intervals, gaps=tuple(gaps))

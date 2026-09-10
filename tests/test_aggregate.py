@@ -2,92 +2,59 @@
 timeline is obvious by construction."""
 
 import pytest
+from _windows import contiguous, make_window, minutes
 
 from ats.aggregate import build_timeline
-from ats.contracts import CANONICAL_CLASSES, validate_window_track
 
-WINDOW = 10.0
-
-
-def window(index: int, t_start: float, activity: str, coverage: float = 1.0):
-    confidence = 0.9
-    remainder = (1.0 - confidence) / (len(CANONICAL_CLASSES) - 1)
-    probs = [remainder] * len(CANONICAL_CLASSES)
-    probs[CANONICAL_CLASSES.index(activity)] = confidence
-    entry = {
-        "window_id": f"w{index:04d}",
-        "t_start": t_start,
-        "t_end": t_start + WINDOW,
-        "probs": probs,
-        "coverage": coverage,
-        "feature_summary": {
-            "acc_mag_mean": 9.8,
-            "acc_mag_std": 0.1,
-            "dominant_cadence_hz": 0.0,
-            "gyro_energy_x": 0.0,
-            "gyro_energy_y": 0.0,
-            "gyro_energy_z": 0.0,
-        },
-        "model_id": "test",
-    }
-    validate_window_track(entry)
-    return entry
+RECORDED_ONLY = {"attribution_period_s": None}
 
 
-def sequence(activities, start=0.0, coverage=1.0):
-    return [
-        window(i, start + i * WINDOW, act, coverage) for i, act in enumerate(activities)
-    ]
+def spans(timeline):
+    return [(iv.activity, iv.t_start, iv.t_end) for iv in timeline.intervals]
+
+
+# --- Segmentation over the recorded signal ----------------------------------
 
 
 def test_two_activities_become_two_intervals():
-    windows = sequence(["SITTING"] * 5 + ["WALKING"] * 5)
-    timeline = build_timeline(windows, smoothing_windows=1)
-
-    assert [(iv.activity, iv.t_start, iv.t_end) for iv in timeline.intervals] == [
-        ("SITTING", 0.0, 50.0),
-        ("WALKING", 50.0, 100.0),
-    ]
+    timeline = build_timeline(
+        contiguous(["SITTING"] * 5 + ["WALKING"] * 5), smoothing_windows=1, **RECORDED_ONLY
+    )
+    assert spans(timeline) == [("SITTING", 0.0, 50.0), ("WALKING", 50.0, 100.0)]
 
 
 def test_smoothing_removes_a_single_window_flicker():
-    windows = sequence(["SITTING", "SITTING", "WALKING", "SITTING", "SITTING"])
+    windows = contiguous(["SITTING", "SITTING", "WALKING", "SITTING", "SITTING"])
 
-    unsmoothed = build_timeline(windows, smoothing_windows=1)
-    assert len(unsmoothed.intervals) == 3
+    assert len(build_timeline(windows, smoothing_windows=1, **RECORDED_ONLY).intervals) == 3
 
-    smoothed = build_timeline(windows, smoothing_windows=3)
-    assert len(smoothed.intervals) == 1
-    assert smoothed.intervals[0].activity == "SITTING"
-    assert smoothed.intervals[0].t_end == 50.0
+    smoothed = build_timeline(windows, smoothing_windows=3, **RECORDED_ONLY)
+    assert spans(smoothed) == [("SITTING", 0.0, 50.0)]
 
 
 def test_gap_breaks_an_interval_even_for_the_same_activity():
     """A duration answer must never silently span a stretch of recording that
     does not exist."""
-    windows = sequence(["SITTING"] * 2) + sequence(["SITTING"] * 2, start=100.0)
-    timeline = build_timeline(windows, smoothing_windows=1)
+    windows = contiguous(["SITTING"] * 2) + contiguous(["SITTING"] * 2, start=100.0)
+    timeline = build_timeline(windows, smoothing_windows=1, **RECORDED_ONLY)
 
-    assert len(timeline.intervals) == 2
-    assert timeline.intervals[0].as_tuple() == (0.0, 20.0)
-    assert timeline.intervals[1].as_tuple() == (100.0, 120.0)
+    assert spans(timeline) == [("SITTING", 0.0, 20.0), ("SITTING", 100.0, 120.0)]
     assert timeline.gaps == ((20.0, 100.0),)
     assert timeline.total_duration("SITTING") == pytest.approx(40.0)
 
 
 def test_low_coverage_windows_are_dropped():
-    windows = sequence(["WALKING"] * 3)
+    windows = contiguous(["WALKING"] * 3)
     windows[1]["coverage"] = 0.1
-    timeline = build_timeline(windows, smoothing_windows=1, min_coverage=0.5)
+    timeline = build_timeline(windows, smoothing_windows=1, min_coverage=0.5, **RECORDED_ONLY)
 
-    covered = sum(iv.duration for iv in timeline.intervals)
-    assert covered == pytest.approx(20.0)
+    assert sum(iv.duration for iv in timeline.intervals) == pytest.approx(20.0)
     assert timeline.gaps == ((10.0, 20.0),)
 
 
 def test_timeline_helpers_on_split_activity():
-    windows = sequence(["WALKING"] * 2) + sequence(["WALKING"] * 3, start=100.0)
-    timeline = build_timeline(windows, smoothing_windows=1)
+    windows = contiguous(["WALKING"] * 2) + contiguous(["WALKING"] * 3, start=100.0)
+    timeline = build_timeline(windows, smoothing_windows=1, **RECORDED_ONLY)
 
     assert timeline.count("WALKING") == 2
     assert timeline.total_duration("WALKING") == pytest.approx(50.0)
@@ -97,8 +64,8 @@ def test_timeline_helpers_on_split_activity():
 
 
 def test_transitions_report_activity_changes():
-    windows = sequence(["SITTING"] * 2 + ["WALKING"] * 2 + ["RUNNING"] * 2)
-    timeline = build_timeline(windows, smoothing_windows=1)
+    windows = contiguous(["SITTING"] * 2 + ["WALKING"] * 2 + ["RUNNING"] * 2)
+    timeline = build_timeline(windows, smoothing_windows=1, **RECORDED_ONLY)
 
     assert timeline.transitions() == [
         (20.0, "SITTING", "WALKING"),
@@ -108,12 +75,64 @@ def test_transitions_report_activity_changes():
 
 def test_empty_and_fully_unreliable_tracks_yield_an_empty_timeline():
     assert build_timeline([]).intervals == ()
-
-    windows = sequence(["WALKING"] * 3, coverage=0.0)
-    assert build_timeline(windows).intervals == ()
+    assert build_timeline(contiguous(["WALKING"] * 3, coverage=0.0)).intervals == ()
 
 
 def test_mean_confidence_reflects_assigned_label():
-    windows = sequence(["WALKING"] * 3)
-    timeline = build_timeline(windows, smoothing_windows=1)
+    timeline = build_timeline(contiguous(["WALKING"] * 3), smoothing_windows=1, **RECORDED_ONLY)
     assert timeline.intervals[0].mean_confidence == pytest.approx(0.9)
+
+
+def test_overlapping_windows_meet_at_the_overlap_midpoint():
+    """With 4 s windows at a 2 s hop, ending a run at its last window's end
+    would overlap the next run and double-count 2 s at every change."""
+    windows = [make_window(i, 2.0 * i, "SITTING" if i < 5 else "WALKING") for i in range(10)]
+    timeline = build_timeline(windows, smoothing_windows=1, **RECORDED_ONLY)
+
+    # last sitting window [8, 12], first walking window [10, 14] -> seam at 11
+    assert spans(timeline) == [("SITTING", 0.0, 11.0), ("WALKING", 11.0, 22.0)]
+
+
+# --- Minute attribution ------------------------------------------------------
+
+
+def test_consecutive_same_activity_minutes_merge_into_one_bout():
+    timeline = build_timeline(minutes([(0, "WALKING"), (60, "WALKING"), (120, "WALKING")]))
+
+    assert spans(timeline) == [("WALKING", 0.0, 180.0)]
+    assert timeline.gaps == ()
+
+
+def test_a_missing_minute_is_a_real_gap():
+    timeline = build_timeline(minutes([(0, "WALKING"), (60, "WALKING"), (180, "WALKING")]))
+
+    assert spans(timeline) == [("WALKING", 0.0, 120.0), ("WALKING", 180.0, 240.0)]
+    assert timeline.gaps == ((120.0, 180.0),)
+    assert timeline.count("WALKING") == 2
+    assert timeline.total_duration("WALKING") == pytest.approx(180.0)
+
+
+def test_activity_change_between_minutes():
+    timeline = build_timeline(minutes([(0, "SITTING"), (60, "WALKING")]))
+    assert spans(timeline) == [("SITTING", 0.0, 60.0), ("WALKING", 60.0, 120.0)]
+
+
+def test_attribution_is_clipped_where_the_next_burst_starts_early():
+    """Real example timestamps are not always exactly 60 s apart."""
+    timeline = build_timeline(minutes([(0, "SITTING"), (49, "WALKING")]))
+    assert spans(timeline) == [("SITTING", 0.0, 49.0), ("WALKING", 49.0, 109.0)]
+
+
+def test_activity_change_inside_a_burst_attributes_the_rest_of_the_minute_to_the_last_run():
+    windows = [make_window(i, 2.0 * i, "SITTING" if i < 5 else "WALKING") for i in range(10)]
+    assert spans(build_timeline(windows)) == [("SITTING", 0.0, 11.0), ("WALKING", 11.0, 60.0)]
+
+
+def test_interval_and_gap_lookup():
+    timeline = build_timeline(minutes([(0, "WALKING"), (60, "WALKING"), (180, "WALKING")]))
+
+    assert timeline.interval_at(30.0).activity == "WALKING"
+    assert timeline.interval_at(150.0) is None
+    assert timeline.gap_at(150.0) == (120.0, 180.0)
+    assert timeline.interval_at(240.0) is None
+    assert timeline.gap_at(240.0) is None
