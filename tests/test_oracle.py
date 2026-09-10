@@ -77,10 +77,19 @@ def data_dir(tmp_path):
 
 @pytest.fixture
 def data_dir_extracted(tmp_path):
-    """The same three examples as `data_dir`, but laid out as
-    already-extracted directories rather than zip archives -- the structure
-    Kaggle produces when it auto-extracts an uploaded dataset's zip files
-    (see `ats.ingest._resolve_source`)."""
+    """The same three examples as `data_dir`, but laid out exactly as Kaggle
+    actually produces them when it auto-extracts an uploaded dataset's zip
+    files (confirmed empirically, not assumed):
+      - `original_labels.zip`'s flat `<uuid>.original_labels.csv.gz` entries
+        land as plain `<uuid>.original_labels.csv` -- Kaggle also
+        auto-decompresses the inner gzip.
+      - `raw_acc.zip` / `proc_gyro.zip`'s entries are already prefixed with
+        `raw_acc/<uuid>/...` internally (see
+        docs/CITATIONS.md#extrasensory-raw-file-layout), so extracting into a
+        directory *also* named `raw_acc` double-nests one level:
+        `raw_acc/raw_acc/<uuid>/...`.
+    See `ats.ingest._resolve_source` / `_iter_bursts`.
+    """
     root = tmp_path / "dir_layout"
     meta = root / "_meta"
     meta.mkdir(parents=True)
@@ -92,10 +101,15 @@ def data_dir_extracted(tmp_path):
     ]
     labels_dir = meta / "original_labels"
     labels_dir.mkdir()
-    (labels_dir / f"{SUBJECT}.original_labels.csv.gz").write_bytes(_labels_csv_gz(rows))
+    fieldnames = ["timestamp"] + [col for col, _ in LABEL_COLUMNS]
+    with (labels_dir / f"{SUBJECT}.original_labels.csv").open("w", newline="", encoding="ascii") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({name: row.get(name, "0") for name in fieldnames})
 
-    acc_dir = meta / "raw_acc" / SUBJECT
-    gyro_dir = meta / "proc_gyro" / SUBJECT
+    acc_dir = meta / "raw_acc" / "raw_acc" / SUBJECT
+    gyro_dir = meta / "proc_gyro" / "proc_gyro" / SUBJECT
     acc_dir.mkdir(parents=True)
     gyro_dir.mkdir(parents=True)
     for ts, (x, y, z) in {1000: (0.3, 0.1, 1.0), 1060: (0.0, 0.0, 1.0), 1120: (0.0, 0.0, 1.0)}.items():

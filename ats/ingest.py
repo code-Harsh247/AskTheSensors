@@ -110,7 +110,15 @@ def load_original_labels(meta_dir: str | Path, subject_id: str) -> dict[int, str
         with zipfile.ZipFile(path) as zf, zf.open(entry_name) as raw, gzip.open(raw, mode="rt", newline="") as f:
             return _parse_labels_csv(f)
     else:
-        with gzip.open(path / entry_name, mode="rt", newline="") as f:
+        # Kaggle auto-decompresses .gz files while processing an uploaded
+        # dataset, so the extracted directory holds plain .csv, not .csv.gz
+        # -- accept either rather than assuming which one shows up.
+        gz_path = path / entry_name
+        csv_path = path / f"{subject_id}.original_labels.csv"
+        if gz_path.is_file():
+            with gzip.open(gz_path, mode="rt", newline="") as f:
+                return _parse_labels_csv(f)
+        with csv_path.open(newline="", encoding="ascii") as f:
             return _parse_labels_csv(f)
 
 
@@ -145,12 +153,18 @@ def _iter_bursts(meta_dir: Path, name: str, subject_id: str, suffix: str):
                 ts = int(entry.rsplit("/", 1)[-1].split(".", 1)[0])
                 yield ts, zf.read(entry)
     else:
-        subject_dir = path / subject_id
-        if subject_dir.is_dir():
-            for file in subject_dir.iterdir():
-                if file.name.endswith(suffix):
-                    ts = int(file.name.split(".", 1)[0])
-                    yield ts, file.read_bytes()
+        # The archive's internal entries are already prefixed with `<name>/`
+        # (e.g. `raw_acc/<uuid>/...` -- see docs/CITATIONS.md#extrasensory-raw-file-layout),
+        # so extracting `<name>.zip` into a directory *also* named `<name>`
+        # double-nests one level (`<name>/<name>/<uuid>/...`) -- exactly what
+        # Kaggle's dataset processing does. Accept either layout.
+        for subject_dir in (path / subject_id, path / name / subject_id):
+            if subject_dir.is_dir():
+                for file in subject_dir.iterdir():
+                    if file.name.endswith(suffix):
+                        ts = int(file.name.split(".", 1)[0])
+                        yield ts, file.read_bytes()
+                return
 
 
 def load_subject(data_dir: str | Path, subject_id: str) -> Subject:
