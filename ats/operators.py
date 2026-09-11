@@ -15,6 +15,7 @@ from ats.aggregate import Interval, Timeline
 from ats.evidence import describe, summarize, summarize_each
 from ats.routing import OperatorCall
 from ats.serialize import format_seconds as fs
+from ats.signal import GRAVITY, MAJORITY, STILL_ACC_STD, STILL_GYRO_ENERGY, gravity_ok, recording_gravity
 from ats.vocab import ACTIVE, PROLONGED_S, SEDENTARY, VIGOROUS, display
 
 # Two totals closer than one window hop cannot be told apart at the
@@ -257,9 +258,83 @@ def _ground(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding
     )
 
 
+_STILL_RULE = (
+    f"accelerometer-magnitude standard deviation at most {STILL_ACC_STD} m/s^2 and gyroscope energy at most "
+    f"{STILL_GYRO_ENERGY}, as still as 95% of lying-down windows on the calibration subject"
+)
+
+
+def _moving(intervals: Sequence[Interval], windows: Windows) -> tuple[list[Interval], int]:
+    """The intervals whose signal is mostly moving, and how many were set
+    aside because it is mostly still: a movement claim cannot rest on a still
+    signal, whatever the classifier called it. When the recording's units are
+    off, stillness cannot be judged and nothing is set aside."""
+    if not gravity_ok(windows):
+        return list(intervals), 0
+    summaries = summarize_each(windows, _spans(intervals))
+    moving = [iv for iv, s in zip(intervals, summaries) if s is not None and s.still_share < MAJORITY]
+    return moving, len(intervals) - len(moving)
+
+
+def _sustained_stillness(timeline: Timeline, windows: Windows) -> Finding:
+    """Rest judged from the signal alone: the longest run of adjacent
+    intervals whose windows are mostly still, whatever posture the classifier
+    gave each of them."""
+    if not timeline.intervals:
+        return _no_data()
+    if not gravity_ok(windows):
+        return abstain(
+            f"This recording's median acceleration magnitude is {recording_gravity(windows):.2f} m/s^2, far from "
+            f"gravity ({GRAVITY} m/s^2), so its units look wrong and stillness cannot be judged from the signal."
+        )
+    summaries = summarize_each(windows, _spans(timeline.intervals))
+    stretches: list[list[Interval]] = []
+    current: list[Interval] = []
+    for interval, summary in zip(timeline.intervals, summaries):
+        if summary is not None and summary.still_share >= MAJORITY:
+            if current and abs(current[-1].t_end - interval.t_start) <= 1e-6:
+                current.append(interval)
+            else:
+                if current:
+                    stretches.append(current)
+                current = [interval]
+        elif current:
+            stretches.append(current)
+            current = []
+    if current:
+        stretches.append(current)
+
+    if not stretches:
+        return Finding(
+            "Likely no",
+            "Sustained stillness",
+            _spans(timeline.intervals),
+            f"None of the {len(timeline.intervals)} observed intervals shows a mostly still signal ({_STILL_RULE}); "
+            "all are cited as the evidence examined.",
+        )
+
+    def length(stretch: list[Interval]) -> float:
+        return stretch[-1].t_end - stretch[0].t_start
+
+    longest = max(stretches, key=length)
+    qualifying = [s for s in stretches if length(s) >= PROLONGED_S]
+    cited = tuple(iv.as_tuple() for stretch in (qualifying or [longest]) for iv in stretch)
+    postures = sorted({_phrase(iv.activity) for iv in longest})
+    return Finding(
+        "Likely yes" if qualifying else "Likely no",
+        "Sustained stillness",
+        cited,
+        f"The longest stretch of mostly still signal runs {fs(longest[0].t_start)}-{fs(longest[-1].t_end)} s "
+        f"({fs(length(longest))} s), {'at or above' if qualifying else 'below'} the {fs(PROLONGED_S)} s taken as "
+        f"prolonged; the classifier called it {', '.join(postures)}. Stillness is judged from the signal "
+        f"({_STILL_RULE}), so it holds whichever resting posture the classifier chose. "
+        + describe(summarize(windows, cited)),
+    )
+
+
 def _prolonged(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding:
     if not call.activities:
-        return abstain("The question asks about a prolonged period without naming an activity.")
+        return _sustained_stillness(timeline, windows)
     activity = call.activities[0]
     intervals = timeline.intervals_of(activity)
     if not intervals:
@@ -278,16 +353,27 @@ def _prolonged(call: OperatorCall, timeline: Timeline, windows: Windows) -> Find
 
 
 def _wheeled(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding:
-    intervals = timeline.intervals_of("BICYCLING")
-    if not intervals:
-        found = _absent("BICYCLING", timeline, "No")
-        return Finding(found.answer, "No wheeled or pedal-based movement observed", found.cited, found.explanation)
+    labelled = timeline.intervals_of("BICYCLING")
+    moving, set_aside = _moving(labelled, windows)
+    if not moving:
+        if not labelled:
+            found = _absent("BICYCLING", timeline, "No")
+            return Finding(found.answer, "No wheeled or pedal-based movement observed", found.cited, found.explanation)
+        return Finding(
+            "No",
+            "No wheeled or pedal-based movement observed",
+            _spans(timeline.intervals),
+            f"{len(labelled)} interval(s) were classified as bicycling, but the signal in each is mostly still "
+            f"({_STILL_RULE}), which cannot support a claim of pedalling; every observed interval is cited as the "
+            "evidence examined.",
+        )
+    note = f" {set_aside} bicycling interval(s) with a mostly still signal were set aside." if set_aside else ""
     return Finding(
         "Yes",
         "Consistent with cycling",
-        _spans(intervals),
-        f"{len(intervals)} interval(s) totalling {fs(timeline.total_duration('BICYCLING'))} s show the motion "
-        f"pattern the recognition backbone associates with bicycling. " + describe(summarize(windows, _spans(intervals))),
+        _spans(moving),
+        f"{len(moving)} interval(s) totalling {fs(sum(iv.duration for iv in moving))} s were classified as "
+        f"bicycling and show a moving signal.{note} " + describe(summarize(windows, _spans(moving))),
     )
 
 
@@ -342,32 +428,47 @@ def _strenuous(call: OperatorCall, timeline: Timeline, windows: Windows) -> Find
         at = _at(timeline, call.time_s)
         if isinstance(at, Finding):
             return at
-        vigorous = at.activity in VIGOROUS
+        stats = summarize(windows, (at.as_tuple(),))
+        moving = stats is not None and stats.still_share < MAJORITY
+        vigorous = at.activity in VIGOROUS and moving
+        if vigorous:
+            verdict = "vigorous activity with a moving signal"
+        elif at.activity in VIGOROUS:
+            verdict = f"vigorous by label, but its signal is mostly still ({_STILL_RULE}), which cannot support a claim of exertion"
+        else:
+            verdict = "not vigorous activity (running or bicycling)"
         return Finding(
             "Yes" if vigorous else "No",
             "Strenuous activity",
             (at.as_tuple(),),
-            f"At {fs(call.time_s)} s the user was {_phrase(at.activity)} ({_bounds(at)}), which is "
-            f"{'' if vigorous else 'not '}vigorous activity (running or bicycling). "
-            + describe(summarize(windows, (at.as_tuple(),))),
+            f"At {fs(call.time_s)} s the user was {_phrase(at.activity)} ({_bounds(at)}), which is {verdict}. "
+            + describe(stats),
         )
-    intervals = [iv for iv in timeline.intervals if iv.activity in VIGOROUS]
-    if not intervals:
+    labelled = [iv for iv in timeline.intervals if iv.activity in VIGOROUS]
+    moving, set_aside = _moving(labelled, windows)
+    if not moving:
         if not timeline.intervals:
             return _no_data()
+        extra = (
+            f" {len(labelled)} running or bicycling interval(s) were set aside because their signal is mostly still "
+            f"({_STILL_RULE})."
+            if labelled
+            else ""
+        )
         return Finding(
             "No",
             "Strenuous activity",
             _spans(timeline.intervals),
-            f"None of the {len(timeline.intervals)} observed intervals is running or bicycling; all are cited as "
-            f"the evidence examined.",
+            f"None of the {len(timeline.intervals)} observed intervals is running or bicycling with a moving signal; "
+            f"all are cited as the evidence examined.{extra}",
         )
+    note = f" {set_aside} running or bicycling interval(s) with a mostly still signal were set aside." if set_aside else ""
     return Finding(
         "Yes",
         "Strenuous activity",
-        _spans(intervals),
-        f"{len(intervals)} interval(s) of running or bicycling total "
-        f"{fs(sum(iv.duration for iv in intervals))} s. " + describe(summarize(windows, _spans(intervals))),
+        _spans(moving),
+        f"{len(moving)} interval(s) of running or bicycling with a moving signal total "
+        f"{fs(sum(iv.duration for iv in moving))} s.{note} " + describe(summarize(windows, _spans(moving))),
     )
 
 

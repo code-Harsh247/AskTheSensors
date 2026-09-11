@@ -1,0 +1,123 @@
+{
+  "intervals_judged_mostly_still_by_true_class": {
+    "subj_real_a": {
+      "LYING": {
+        "intervals": 9,
+        "mostly_still": 0.3333333333333333
+      },
+      "SITTING": {
+        "intervals": 20,
+        "mostly_still": 0.5
+      },
+      "STANDING_MOVING": {
+        "intervals": 9,
+        "mostly_still": 0.1111111111111111
+      },
+      "STANDING_STILL": {
+        "intervals": 1,
+        "mostly_still": 0.0
+      },
+      "WALKING": {
+        "intervals": 15,
+        "mostly_still": 0.2
+      }
+    },
+    "subj_real_b": {
+      "BICYCLING": {
+        "intervals": 50,
+        "mostly_still": 0.0
+      },
+      "LYING": {
+        "intervals": 47,
+        "mostly_still": 0.0
+      },
+      "RUNNING": {
+        "intervals": 5,
+        "mostly_still": 0.0
+      },
+      "SITTING": {
+        "intervals": 112,
+        "mostly_still": 0.0
+      },
+      "STANDING_MOVING": {
+        "intervals": 96,
+        "mostly_still": 0.0
+      },
+      "STANDING_STILL": {
+        "intervals": 9,
+        "mostly_still": 0.0
+      },
+      "WALKING": {
+        "intervals": 6,
+        "mostly_still": 0.0
+      }
+    }
+  },
+  "median_acc_magnitude_m_s2": {
+    "plausible_band": [
+      8.0,
+      12.0
+    ],
+    "subj_real_a": 9.775268196076693,
+    "subj_real_b": 94.75283904046451
+  },
+  "thresholds": {
+    "acc_mag_std": 0.022,
+    "calibrated_on": "subj_real_a",
+    "gyro_energy": 0.005
+  },
+  "windows_judged_still_by_true_class": {
+    "subj_real_a": {
+      "LYING": {
+        "n": 5913,
+        "still_share": 0.9470657872484356
+      },
+      "SITTING": {
+        "n": 9954,
+        "still_share": 0.8457906369298774
+      },
+      "STANDING_MOVING": {
+        "n": 1719,
+        "still_share": 0.32809773123909247
+      },
+      "STANDING_STILL": {
+        "n": 18,
+        "still_share": 0.0
+      },
+      "WALKING": {
+        "n": 1458,
+        "still_share": 0.25377229080932784
+      }
+    },
+    "subj_real_b": {
+      "BICYCLING": {
+        "n": 4152,
+        "still_share": 0.0
+      },
+      "LYING": {
+        "n": 15000,
+        "still_share": 0.0
+      },
+      "RUNNING": {
+        "n": 528,
+        "still_share": 0.0
+      },
+      "SITTING": {
+        "n": 15666,
+        "still_share": 0.0
+      },
+      "STANDING_MOVING": {
+        "n": 5297,
+        "still_share": 0.0
+      },
+      "STANDING_STILL": {
+        "n": 188,
+        "still_share": 0.0
+      },
+      "WALKING": {
+        "n": 90,
+        "still_share": 0.0
+      }
+    }
+  }
+}

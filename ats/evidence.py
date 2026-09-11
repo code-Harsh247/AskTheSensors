@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from ats.serialize import format_seconds
+from ats.signal import is_still
 
 # The recognition backbone consumes all six channels (ats/model.py
 # INPUT_CHANNELS), so any claim derived from its labels rests on both
@@ -33,6 +34,7 @@ class SignalSummary:
     gyro_energy: float
     cadence_hz: float
     cadence_share: float
+    still_share: float
 
 
 def _centre(window: dict[str, Any]) -> float:
@@ -79,6 +81,7 @@ def _summary_of(members: Sequence[dict[str, Any]]) -> SignalSummary | None:
         ),
         cadence_hz=statistics.median(cadences) if cadences else 0.0,
         cadence_share=len(cadences) / len(members),
+        still_share=sum(1 for w in members if is_still(w)) / len(members),
     )
 
 
@@ -109,8 +112,10 @@ def describe(summary: SignalSummary | None) -> str:
         f"with standard deviation {summary.acc_mag_std:.2f}, and gyroscope energy {summary.gyro_energy:.3g}"
     )
     if summary.cadence_share > 0:
-        return text + (
+        text += (
             f"; a periodic cadence near {summary.cadence_hz:.2f} Hz appears in "
             f"{summary.cadence_share:.0%} of windows."
         )
-    return text + "; no periodic cadence was detected."
+    else:
+        text += "; no periodic cadence was detected."
+    return text + f" {summary.still_share:.0%} of these windows show a still signal."

@@ -96,7 +96,6 @@ _DURATION = re.compile(r"\bhow (long|much time)\b|\btotal (time|duration)\b|\bdu
 _COMPARE = re.compile(r"\b(more|less) time\b|\blonger\b|\bshorter\b|\bcompar\w*\b|\bmore\b")
 _VERIFY = re.compile(r"^\s*(is|was|were|did|does|do|has|had)\b")
 _IDENTIFY = re.compile(r"\bwhat\b.*\b(activity|doing|performing|up to)\b|\bwhich activity\b")
-_REST_WORDS = re.compile(r"\b(rest|resting|sleep\w*|lie|lying|lay|laid)\b")
 
 
 def route(text: str) -> OperatorCall:
@@ -109,8 +108,9 @@ def route(text: str) -> OperatorCall:
 
     for predicate, pattern in _OPEN_WORLD:
         if pattern.search(lowered):
-            if predicate == "prolonged" and not activities and _REST_WORDS.search(lowered):
-                activities = ("LYING",)
+            # A rest question that names no posture ("resting for a long
+            # time?") keeps no activity, so it is answered from sustained
+            # stillness in the signal rather than from a posture label.
             return OperatorCall("open_world", activities, time_s, predicate)
 
     # "Did she walk for more than 5 minutes?" is a threshold question, not a
