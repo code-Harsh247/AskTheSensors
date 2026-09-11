@@ -32,7 +32,8 @@ import psutil
 import torch
 
 from ats.contracts import validate_cost_report
-from ats.model import ActivityCNN, N_CHANNELS, count_parameters, predict_probs
+from ats.model import N_CHANNELS, count_parameters, predict_probs
+from ats.recognize import load_model
 from ats.resample import TARGET_HZ
 from ats.windowing import WINDOW_LENGTH_S
 
@@ -84,12 +85,25 @@ def peak_rss_mb() -> float:
     return info.rss / (1024 * 1024)
 
 
+def _params_for(model_path: Path, model) -> int:
+    """A compressed config's `params.json` sidecar (docs/TASKS.md task
+    5A.1) records the logical parameter count when it can't be recovered
+    from the saved module -- a converted quantized layer's weights are
+    packed, not plain `nn.Parameter`s, so `count_parameters` alone would
+    undercount it. Prefer the sidecar when present."""
+    sidecar = model_path.parent / "params.json"
+    if sidecar.is_file():
+        return json.loads(sidecar.read_text(encoding="utf-8"))["params"]
+    return count_parameters(model)
+
+
 def profile_recognition(model_path: Path, n_queries: int) -> dict:
     """Build a CostReport (minus config_id/target_device, filled in by the
-    caller) for one trained ActivityCNN checkpoint."""
-    model = ActivityCNN()
-    model.load_state_dict(torch.load(model_path, map_location="cpu"))
-    model.eval()
+    caller) for one trained (or compressed, docs/TASKS.md task 5A.1)
+    ActivityCNN checkpoint, loaded via `ats.recognize.load_model` so
+    whichever format `ats/compress.py` saved (whole module or plain state
+    dict) works the same way here as it does for live inference."""
+    model = load_model(model_path)
 
     rng = np.random.default_rng(0)
     x = torch.from_numpy(rng.standard_normal((1, N_CHANNELS, N_TIMESTEPS)).astype(np.float32))
@@ -100,7 +114,7 @@ def profile_recognition(model_path: Path, n_queries: int) -> dict:
     cpu_pct = proc.cpu_percent(interval=None)
 
     return {
-        "params": count_parameters(model),
+        "params": _params_for(model_path, model),
         "disk_mb": model_path.stat().st_size / (1024 * 1024),
         "peak_rss_mb": peak_rss_mb(),
         "latency_p50_ms": p50_ms,

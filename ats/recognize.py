@@ -34,10 +34,22 @@ DEFAULT_DATA_DIR = "data/raw"
 DEFAULT_MODEL_PATH = "models/full/activity_cnn.pt"
 
 
-def load_model(model_path: str | Path) -> ActivityCNN:
-    model = ActivityCNN()
-    state_dict = torch.load(model_path, map_location="cpu")
-    model.load_state_dict(state_dict)
+def load_model(model_path: str | Path) -> torch.nn.Module:
+    """Loads `models/full/activity_cnn.pt`'s plain state-dict format
+    unchanged (the graders' entry point, `ats.answer`, must keep working
+    exactly as before). Compressed configs from `ats/compress.py` (task
+    5A.1) save the whole module instead -- pruning changes the architecture
+    (narrower channels), and quant8 is saved via TorchScript specifically
+    because a converted quantized module doesn't reliably survive a plain
+    pickle round-trip across processes -- so this tries TorchScript first,
+    then a pickled module/state-dict."""
+    try:
+        model = torch.jit.load(model_path, map_location="cpu")
+    except RuntimeError:
+        obj = torch.load(model_path, map_location="cpu", weights_only=False)
+        model = obj if isinstance(obj, torch.nn.Module) else ActivityCNN()
+        if not isinstance(obj, torch.nn.Module):
+            model.load_state_dict(obj)
     model.eval()
     return model
 
@@ -45,6 +57,17 @@ def load_model(model_path: str | Path) -> ActivityCNN:
 def build_track(subject_id: str, data_dir: str | Path, model: ActivityCNN, model_id: str = "full") -> list[dict]:
     subject = load_subject(data_dir, subject_id)
     globalized = globalize_subject(subject)
+    return build_track_from_globalized(globalized, model, model_id=model_id, subject_id=subject_id)
+
+
+def build_track_from_globalized(
+    globalized, model: ActivityCNN, model_id: str = "full", subject_id: str = "?"
+) -> list[dict]:
+    """The same pipeline as `build_track`, taking an already-globalized
+    `ats.resample.GlobalSamples` instead of loading+globalizing a subject
+    itself. Used directly by `scripts/sweep.py` (docs/TASKS.md task 5A.3) so
+    a degraded signal (`ats/degrade.py`) can be windowed and scored without
+    a round trip through the raw archives for every sweep point."""
     all_windows = list(make_windows(globalized, window_s=WINDOW_LENGTH_S, hop_s=HOP_S))
     if not all_windows:
         return []

@@ -37,30 +37,86 @@ class ActivityCNN(nn.Module):
     in CANONICAL_CLASSES order (apply softmax/argmax outside, e.g. via
     `predict_probs` below) -- not tied to a fixed window length, so a future
     change to WINDOW_LENGTH_S doesn't require a new architecture.
+
+    `hidden_channels` defaults to the trained (16, 32, 64) widths; narrower
+    values are used by `ats/compress.py`'s structured channel pruning
+    (docs/TASKS.md task 5A.1) to build a smaller architecture that a pruned
+    checkpoint's sliced weights actually fit into.
     """
 
-    def __init__(self, n_channels: int = N_CHANNELS, n_classes: int = N_CLASSES):
+    def __init__(
+        self,
+        n_channels: int = N_CHANNELS,
+        n_classes: int = N_CLASSES,
+        hidden_channels: tuple[int, int, int] = (16, 32, 64),
+    ):
         super().__init__()
+        h1, h2, h3 = hidden_channels
         self.features = nn.Sequential(
-            nn.Conv1d(n_channels, 16, kernel_size=5, padding=2),
-            nn.BatchNorm1d(16),
+            nn.Conv1d(n_channels, h1, kernel_size=5, padding=2),
+            nn.BatchNorm1d(h1),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(2),
-            nn.Conv1d(16, 32, kernel_size=5, padding=2),
-            nn.BatchNorm1d(32),
+            nn.Conv1d(h1, h2, kernel_size=5, padding=2),
+            nn.BatchNorm1d(h2),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(2),
-            nn.Conv1d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm1d(64),
+            nn.Conv1d(h2, h3, kernel_size=3, padding=1),
+            nn.BatchNorm1d(h3),
             nn.ReLU(inplace=True),
             nn.AdaptiveAvgPool1d(1),
         )
-        self.classifier = nn.Linear(64, n_classes)
+        self.classifier = nn.Linear(h3, n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         x = x.flatten(1)
         return self.classifier(x)
+
+
+class QuantizableActivityCNN(nn.Module):
+    """Same architecture as ActivityCNN, with QuantStub/DeQuantStub added
+    around it -- required by PyTorch's eager-mode static quantization API
+    (`ats/compress.py`, docs/TASKS.md task 5A.1), not a different model.
+
+    Deliberately kept in this module rather than in ats/compress.py: a
+    class defined in a script that is itself run via `python -m X` gets
+    pickled under a `__main__` identity that a *different* process running
+    `python -m ats.profile` can't resolve (`torch.save`/`load` use pickle
+    under the hood). ats/model.py is never run directly, only imported, so
+    its classes' module identity is stable across every process that loads
+    a saved quantized checkpoint.
+    """
+
+    def __init__(self, hidden_channels: tuple[int, int, int] = (16, 32, 64)):
+        super().__init__()
+        from torch.ao.quantization import DeQuantStub, QuantStub
+
+        h1, h2, h3 = hidden_channels
+        self.quant = QuantStub()
+        self.features = nn.Sequential(
+            nn.Conv1d(N_CHANNELS, h1, kernel_size=5, padding=2),
+            nn.BatchNorm1d(h1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(2),
+            nn.Conv1d(h1, h2, kernel_size=5, padding=2),
+            nn.BatchNorm1d(h2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(2),
+            nn.Conv1d(h2, h3, kernel_size=3, padding=1),
+            nn.BatchNorm1d(h3),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool1d(1),
+        )
+        self.classifier = nn.Linear(h3, N_CLASSES)
+        self.dequant = DeQuantStub()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.quant(x)
+        x = self.features(x)
+        x = x.flatten(1)
+        x = self.classifier(x)
+        return self.dequant(x)
 
 
 def count_parameters(model: nn.Module) -> int:
