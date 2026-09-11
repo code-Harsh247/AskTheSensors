@@ -302,9 +302,9 @@ Recognition backbone (\code{full}) & \\
 \midrule
 Parameters & 9,975 \\
 On-disk size & 0.047\,MB \\
-Peak resident memory & 207.8\,MB \\
-Latency per window, p50 / p95 & 0.40 / 0.51\,ms \\
-CPU utilisation during timing & 587.5\% (of one core) \\
+Peak resident memory & 211.9\,MB \\
+Latency per window, p50 / p95 & 0.40 / 0.58\,ms \\
+CPU utilisation during timing & 681.5\% (of one core) \\
 Energy per query (estimate) & 7.6\,mJ \\
 \midrule
 Answering layer, timeline build, p50 / p95 (5 runs) & 130.0 / 251.9\,ms \\
@@ -316,12 +316,12 @@ Answering layer, peak resident memory & 298.9\,MB \\
 \label{tab:cost}
 \end{table}
 
-\paragraph{The SLM router, on the target device.} \code{scripts/profile\_pipeline.py --router slm} gives 11.35 / 13.04\,s per question (p50/p95, 10 calls) and 2081\,MB peak resident memory (\code{results/pipeline\_latency\_slm.json}) -- markedly worse than the 5.6 / 7.5\,s in Table~\ref{tab:ablation}, which was measured on Member B's own laptop (Ryzen 7 5800H), not the target device. On the machine that actually has to run this, the SLM path costs roughly 170$\times$ the rule router's per-question time for no accuracy gain (Table~\ref{tab:ablation}), which only reinforces \S\ref{sec:router}'s decision to keep rules as the default.
+\paragraph{The SLM router, on the target device.} \texttt{scripts/profile\_pipeline.py -{}-router slm} gives 11.35 / 13.04\,s per question (p50/p95, 10 calls) and 2081\,MB peak resident memory (\path{results/pipeline_latency_slm.json}) -- markedly worse than the 5.6 / 7.5\,s in Table~\ref{tab:ablation}, which was measured on Member B's own laptop (Ryzen 7 5800H), not the target device. On the machine that actually has to run this, the SLM path costs roughly 170$\times$ the rule router's per-question time for no accuracy gain (Table~\ref{tab:ablation}), which only reinforces \S\ref{sec:router}'s decision to keep rules as the default.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.75\linewidth]{fig4_pareto.png}
-\setcounter{figure}{3}\caption{\textbf{Accuracy versus overhead.} On-disk size against accuracy on the 34-question real-subject set (\S\ref{sec:results-qa}), for \code{full} and three compressed configurations with no training or fine-tuning step: \code{quant8} (post-training static int8 quantization) and \code{pruned30}/\code{pruned60} (structured filter pruning by L1-norm channel rank, 30\%/60\% of channels removed). \code{quant8} dominates \code{full} outright here -- smaller (0.034 vs 0.047\,MB) \emph{and} more accurate (0.451 vs 0.393) -- a stronger result than the brief asks for (a large cost cut for a small accuracy loss; here there is no loss at all), though on a 34-question sample this should not be over-read. Caveat stated plainly: \code{quant8}'s \emph{latency} is worse than \code{full}'s (1.37 vs 0.35\,ms p50) -- this CPU's only available quantized backend (oneDNN) appears to lack vectorized int8 support, so quantization here trades disk size for latency, not both. Pruning behaves as expected: smaller and cheaper, with an accuracy cost that grows with pruning strength (\code{results/pareto.csv}, \code{scripts/make\_fig4.py}).}
+\setcounter{figure}{3}\caption{\textbf{Accuracy versus overhead.} On-disk size against accuracy on the 34-question real-subject set (\S\ref{sec:results-qa}), for \code{full} and three compressed configurations with no training or fine-tuning step: \code{quant8} (post-training static int8 quantization) and \code{pruned30}/\code{pruned60} (structured filter pruning by L1-norm channel rank, 30\%/60\% of channels removed). \code{quant8} is 27\% smaller than \code{full} on disk (0.034 vs 0.047\,MB) at no measured accuracy cost. It even scored higher (0.451 vs 0.393), but a gain from quantization with no retraining, on 34 questions, is best read as noise. Timed standalone (200 calls each, \code{results/cost\_report\_*.json}), all four configurations take 0.35--0.42\,ms per window at the median, so at this model's size compression buys size, not speed. Pruning shrinks the model further, with an accuracy cost that grows with pruning strength (\code{results/pareto.csv}, \code{scripts/make\_fig4.py}).}
 \label{fig:fig4}
 \end{figure}
 \begin{figure}[h]
