@@ -15,7 +15,7 @@ import pytest
 
 from ats.aggregate import build_timeline, load_track
 from ats.contracts import CANONICAL_CLASSES, validate_window_track
-from ats.ingest import LABEL_COLUMNS, load_subject
+from ats.ingest import LABEL_COLUMNS, _sanitize_burst_rows, load_subject
 from ats.oracle import build_track
 from ats.resample import globalize_subject
 from ats.windowing import HOP_S, WINDOW_LENGTH_S, make_windows
@@ -249,3 +249,51 @@ def test_committed_real_sample_track_is_schema_valid_and_aggregates():
     seen_activities = timeline.activities_present()
     assert seen_activities <= set(CANONICAL_CLASSES)
     assert len(seen_activities) > 1, "sample track should span more than one real activity"
+
+
+def test_sanitize_burst_rows_drops_an_implausible_span():
+    """A real device clock glitch produced a burst whose last sample was
+    timestamped far ahead of its first -- downstream this tried to allocate
+    a resampling grid with billions of points (an OOM crash, not a graceful
+    failure). Confirmed against the real anomaly, not a hypothetical one."""
+    clean = ((500.0, 0.0, 0.0, 1.0), (500.04, 0.0, 0.0, 1.0), (500.08, 0.0, 0.0, 1.0))
+    assert _sanitize_burst_rows(clean, "subj", 1000) == clean
+
+    corrupted = ((500.0, 0.0, 0.0, 1.0), (500.04, 0.0, 0.0, 1.0), (50_000_000.0, 0.0, 0.0, 1.0))
+    assert _sanitize_burst_rows(corrupted, "subj", 1000) == ()
+
+    backward = ((500.0, 0.0, 0.0, 1.0), (400.0, 0.0, 0.0, 1.0))
+    assert _sanitize_burst_rows(backward, "subj", 1000) == ()
+
+    too_short_to_judge = ((500.0, 0.0, 0.0, 1.0),)
+    assert _sanitize_burst_rows(too_short_to_judge, "subj", 1000) == too_short_to_judge
+
+
+def test_load_subject_drops_a_burst_with_a_corrupted_timestamp_instead_of_crashing(tmp_path):
+    """End-to-end: a subject with one corrupted burst (accelerometer's last
+    sample timestamped far in the future) must not crash load_subject, and
+    the corrupted channel's data for that burst must not appear at all."""
+    meta = tmp_path / "_meta"
+    meta.mkdir()
+
+    rows = [{"timestamp": "1000", "original_label:SITTING": "1"}]
+    _write_zip(meta / "original_labels.zip", {f"{SUBJECT}.original_labels.csv.gz": _labels_csv_gz(rows)})
+
+    # A normal burst, except the accelerometer's last sample has a garbage
+    # timestamp roughly 50000 seconds ahead of the rest.
+    good_lines = [f"{500.0 + i * 0.025:.6f} 0.0 0.0 1.0" for i in range(799)]
+    corrupted_dat = "\n".join(good_lines + ["50000500.0 0.0 0.0 1.0"]).encode("ascii")
+    _write_zip(meta / "raw_acc.zip", {f"raw_acc/{SUBJECT}/1000.m_raw_acc.dat": corrupted_dat})
+    _write_zip(meta / "proc_gyro.zip", {f"proc_gyro/{SUBJECT}/1000.m_proc_gyro.dat": _burst_dat(500.0, 800, 40.0, 0.0, 0.0, 0.0)})
+
+    subject = load_subject(tmp_path, SUBJECT)
+
+    assert len(subject.bursts) == 1
+    burst = subject.bursts[0]
+    assert burst.acc == (), "corrupted accelerometer data should be dropped, not propagated"
+    assert len(burst.gyro) == 800, "the uncorrupted gyroscope channel should be unaffected"
+
+    # And the whole pipeline this originally crashed in must complete.
+    globalized = globalize_subject(subject)
+    windows = list(make_windows(globalized, window_s=WINDOW_LENGTH_S, hop_s=HOP_S))
+    assert windows
