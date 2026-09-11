@@ -1,4 +1,16 @@
 {
+  "gyro_resting_floor_xyz": {
+    "subj_real_a": [
+      5.179443733296243e-05,
+      5.229004781255582e-05,
+      3.113600995645864e-05
+    ],
+    "subj_real_b": [
+      0.00015361291948055516,
+      0.018330772760672766,
+      7.28870342101736e-05
+    ]
+  },
   "intervals_judged_mostly_still_by_true_class": {
     "subj_real_a": {
       "LYING": {
@@ -29,7 +41,7 @@
       },
       "LYING": {
         "intervals": 47,
-        "mostly_still": 0.0
+        "mostly_still": 0.9787234042553191
       },
       "RUNNING": {
         "intervals": 5,
@@ -37,15 +49,15 @@
       },
       "SITTING": {
         "intervals": 112,
-        "mostly_still": 0.0
+        "mostly_still": 0.6875
       },
       "STANDING_MOVING": {
         "intervals": 96,
-        "mostly_still": 0.0
+        "mostly_still": 0.11458333333333333
       },
       "STANDING_STILL": {
         "intervals": 9,
-        "mostly_still": 0.0
+        "mostly_still": 0.4444444444444444
       },
       "WALKING": {
         "intervals": 6,
@@ -70,11 +82,11 @@
     "subj_real_a": {
       "LYING": {
         "n": 5913,
-        "still_share": 0.9470657872484356
+        "still_share": 0.9472349061390157
       },
       "SITTING": {
         "n": 9954,
-        "still_share": 0.8457906369298774
+        "still_share": 0.8458910990556561
       },
       "STANDING_MOVING": {
         "n": 1719,
@@ -86,7 +98,7 @@
       },
       "WALKING": {
         "n": 1458,
-        "still_share": 0.25377229080932784
+        "still_share": 0.2544581618655693
       }
     },
     "subj_real_b": {
@@ -96,7 +108,7 @@
       },
       "LYING": {
         "n": 15000,
-        "still_share": 0.0
+        "still_share": 0.975
       },
       "RUNNING": {
         "n": 528,
@@ -104,15 +116,15 @@
       },
       "SITTING": {
         "n": 15666,
-        "still_share": 0.0
+        "still_share": 0.8100344695518958
       },
       "STANDING_MOVING": {
         "n": 5297,
-        "still_share": 0.0
+        "still_share": 0.07683594487445725
       },
       "STANDING_STILL": {
         "n": 188,
-        "still_share": 0.0
+        "still_share": 0.44148936170212766
       },
       "WALKING": {
         "n": 90,

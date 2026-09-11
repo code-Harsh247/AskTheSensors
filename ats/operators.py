@@ -260,7 +260,8 @@ def _ground(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding
 
 _STILL_RULE = (
     f"accelerometer-magnitude standard deviation at most {STILL_ACC_STD} m/s^2 and gyroscope energy at most "
-    f"{STILL_GYRO_ENERGY}, as still as 95% of lying-down windows on the calibration subject"
+    f"{STILL_GYRO_ENERGY} above the recording's resting level, as still as 95% of lying-down windows on the "
+    f"calibration subject"
 )
 
 

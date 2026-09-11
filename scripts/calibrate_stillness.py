@@ -4,7 +4,11 @@ subj_real_b (docs/TASKS.md task 4B.3).
 The thresholds come only from subj_real_a's lying-down windows. subj_real_b is
 never used to choose them; it shows how the rule holds on a subject it was not
 fitted to, including whether real running and bicycling survive the
-moving-signal requirement. Writes results/stillness_calibration.json.
+moving-signal requirement. One caveat: measuring gyroscope energy above each
+recording's resting floor (ats/signal.py) was added after this check found
+subj_real_b's gyroscope offset, so for the gyroscope half of the rule
+subj_real_b is no longer an independent check. Each recording's floor is
+reported. Writes results/stillness_calibration.json.
 
 Usage:  python scripts/calibrate_stillness.py
 """
@@ -24,6 +28,7 @@ from ats.signal import (
     STILL_ACC_STD,
     STILL_GYRO_ENERGY,
     calibrate_still_thresholds,
+    gyro_floor,
     is_still,
     recording_gravity,
 )
@@ -38,10 +43,11 @@ def _label(window: dict) -> str:
 
 
 def window_still_share(windows: list[dict]) -> dict[str, dict]:
+    floor = gyro_floor(windows)
     by_class: dict[str, list[bool]] = defaultdict(list)
     for w in windows:
         if w["coverage"] >= 0.95:
-            by_class[_label(w)].append(is_still(w))
+            by_class[_label(w)].append(is_still(w, floor))
     return {c: {"n": len(v), "still_share": sum(v) / len(v)} for c, v in by_class.items()}
 
 
@@ -66,6 +72,7 @@ def main() -> None:
     check = load_track(FIXTURES_DIR / f"track_{CHECK}.jsonl")
     report = {
         "thresholds": {"acc_mag_std": STILL_ACC_STD, "gyro_energy": STILL_GYRO_ENERGY, "calibrated_on": CALIBRATION},
+        "gyro_resting_floor_xyz": {CALIBRATION: list(gyro_floor(calibration)), CHECK: list(gyro_floor(check))},
         "median_acc_magnitude_m_s2": {
             CALIBRATION: recording_gravity(calibration),
             CHECK: recording_gravity(check),

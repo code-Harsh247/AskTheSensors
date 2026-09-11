@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from ats.serialize import format_seconds
-from ats.signal import is_still
+from ats.signal import GyroFloor, gyro_floor, is_still
 
 # The recognition backbone consumes all six channels (ats/model.py
 # INPUT_CHANNELS), so any claim derived from its labels rests on both
@@ -66,7 +66,7 @@ def windows_in(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> list
     return members
 
 
-def _summary_of(members: Sequence[dict[str, Any]]) -> SignalSummary | None:
+def _summary_of(members: Sequence[dict[str, Any]], floor: GyroFloor) -> SignalSummary | None:
     if not members:
         return None
     features = [w["feature_summary"] for w in members]
@@ -81,17 +81,20 @@ def _summary_of(members: Sequence[dict[str, Any]]) -> SignalSummary | None:
         ),
         cadence_hz=statistics.median(cadences) if cadences else 0.0,
         cadence_share=len(cadences) / len(members),
-        still_share=sum(1 for w in members if is_still(w)) / len(members),
+        still_share=sum(1 for w in members if is_still(w, floor)) / len(members),
     )
 
 
 def summarize(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> SignalSummary | None:
-    return _summary_of(windows_in(windows, spans))
+    """The gyroscope's resting floor comes from the whole recording, not just
+    the cited windows, so a cited stretch of rest cannot hide its own offset."""
+    return _summary_of(windows_in(windows, spans), gyro_floor(windows))
 
 
 def summarize_each(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> list[SignalSummary | None]:
     """One summary per span, in a single pass over the windows. Spans must not
     overlap, which holds for timeline intervals."""
+    floor = gyro_floor(windows)
     order = sorted(range(len(spans)), key=lambda i: spans[i][0])
     starts = [spans[i][0] for i in order]
     buckets: list[list[dict[str, Any]]] = [[] for _ in spans]
@@ -100,7 +103,7 @@ def summarize_each(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> 
         k = bisect.bisect_right(starts, centre) - 1
         if k >= 0 and centre < spans[order[k]][1]:
             buckets[order[k]].append(window)
-    return [_summary_of(bucket) for bucket in buckets]
+    return [_summary_of(bucket, floor) for bucket in buckets]
 
 
 def describe(summary: SignalSummary | None) -> str:

@@ -10,7 +10,14 @@ from ats.answer import to_answer
 from ats.eval.dev import FIXTURES_DIR
 from ats.operators import execute
 from ats.routing import route
-from ats.signal import STILL_ACC_STD, STILL_GYRO_ENERGY, calibrate_still_thresholds, is_still
+from ats.signal import (
+    NO_FLOOR,
+    STILL_ACC_STD,
+    STILL_GYRO_ENERGY,
+    calibrate_still_thresholds,
+    gyro_floor,
+    is_still,
+)
 from ats.validator import grounding_problems
 
 
@@ -96,8 +103,9 @@ def _rescaled(windows, factor):
 
 
 def test_stillness_is_not_judged_when_a_recording_is_far_from_gravity():
-    """subj_real_b's accelerometer reads about 9.7 times gravity; against
-    thresholds in m/s^2 nothing there looks still, so rest must not be judged."""
+    """Before the units fix in ats/ingest.py, subj_real_b's accelerometer read
+    about 9.7 times gravity; against thresholds in m/s^2 nothing there looks
+    still, so rest must not be judged."""
     windows = _rescaled(minutes([(m, "LYING") for m in (0, 60, 120, 180, 240, 300)]), 9.81)
     answer = ask(windows, "Was the user resting for a long time?")
     assert answer["answer"] == "N/A"
@@ -118,3 +126,52 @@ def test_movement_labels_are_not_vetoed_when_stillness_cannot_be_judged():
 def test_a_strenuous_claim_needs_a_moving_signal(text):
     windows = minutes([(0, "SITTING"), (60, "RUNNING", "SITTING"), (120, "SITTING")])
     assert ask(windows, text)["answer"] == "No"
+
+
+Y_OFFSET = 0.02  # the size of subj_real_b's y-axis resting energy
+
+
+def _gyro_offset(windows, y_offset=Y_OFFSET):
+    """The same windows from a phone whose gyroscope y-axis carries a constant
+    bias, adding the same energy to every window."""
+    for window in windows:
+        window["feature_summary"]["gyro_energy_y"] += y_offset
+    return windows
+
+
+def test_the_resting_floor_is_read_from_accelerometer_quiet_windows():
+    # 20 lying windows (quiet) and 10 walking (not): the floor is the lying
+    # windows' per-axis energy, 0.0005 on x and z, 0.0005 + 0.02 on y.
+    windows = _gyro_offset(minutes([(0, "LYING"), (60, "LYING"), (120, "WALKING")]))
+    assert gyro_floor(windows) == pytest.approx((0.0005, 0.0205, 0.0005))
+
+
+def test_no_floor_without_enough_quiet_windows():
+    # 9 quiet windows is one short of MIN_QUIET_WINDOWS; nothing is subtracted.
+    windows = minutes([(0, "WALKING"), (60, "RUNNING")])
+    assert gyro_floor(windows) == NO_FLOOR
+    windows[:9] = minutes([(0, "LYING")])[:9]
+    assert gyro_floor(windows) == NO_FLOOR
+
+
+def test_a_gyroscope_offset_does_not_hide_stillness():
+    windows = _gyro_offset(minutes([(m, "LYING") for m in (0, 60, 120, 180, 240, 300)]))
+    assert not is_still(windows[0])  # 0.0215 raw energy, over the 0.005 threshold
+    assert is_still(windows[0], gyro_floor(windows))
+    assert ask(windows, "Was the user resting for a long time?")["answer"] == "Likely yes"
+
+
+def test_the_floor_is_scaled_by_coverage():
+    # A half-covered window carries half the offset's energy; subtracting the
+    # full floor would push it below zero and call a moving axis still.
+    floor = (0.0, 0.02, 0.0)
+    moving = {"coverage": 0.5, "feature_summary": {"acc_mag_std": 0.01, "gyro_energy_x": 0.0,
+                                                   "gyro_energy_y": 0.016, "gyro_energy_z": 0.0}}
+    assert not is_still(moving, floor)  # 0.016 - 0.5 * 0.02 = 0.006, over 0.005
+
+
+def test_an_offset_does_not_make_movement_look_still():
+    windows = _gyro_offset(minutes([(0, "SITTING"), (60, "SITTING"), (120, "BICYCLING"), (180, "SITTING")]))
+    answer = ask(windows, "Was the user using a wheeled or pedal-based mode of movement?")
+    assert answer["answer"] == "Yes"
+    assert answer["cited_intervals"] == [[120.0, 180.0]]

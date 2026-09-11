@@ -69,6 +69,8 @@ ExtraSensory users carried different phones, and the raw accelerometer files are
 
 The gyroscope may be affected too: `subj_real_b`'s gyroscope-energy floor is about 100× `subj_real_a`'s. That could be a different sensor, or another units difference such as degrees versus radians per second. It's less clear-cut than the accelerometer, but worth checking while you are in there.
 
+> **Update (Member B, after the units fix):** not a units difference. `subj_real_b`'s y-axis carries a constant offset of about 0.014 rad/s whatever the wearer is doing: an uncorrected gyroscope bias. Removing it in `ats/ingest.py` would change the model's inputs and need a retrain, so instead `ats/signal.py` measures gyroscope energy above each recording's resting floor. No action needed from Member A. Details in docs/TASKS.md task 4B.3.
+
 ## Suggested fix (your call)
 
 - Decide the units **per subject** rather than assuming g for all. For example, take the median raw magnitude across the subject's bursts: close to 1 means g, so convert; close to 9.8 means it is already m/s², so don't. Log the decision for each subject. If ExtraSensory has per-user phone metadata, that is an even better source.
