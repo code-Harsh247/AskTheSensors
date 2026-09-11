@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Fixed in `ats/ingest.py` (per-subject unit detection); CNN retrain still pending on Kaggle |
+| **Status** | Fixed and verified end-to-end, including the CNN retrain |
 | **Severity** | High: affects classifier training data, recognition results, and explanations, and blocks the Phase 4 stillness check |
 | **Owner** | Member A (`ats/ingest.py`) |
 | **Reported by** | Member B, 2026-09-11 |
@@ -80,7 +80,7 @@ The gyroscope may be affected too: `subj_real_b`'s gyroscope-energy floor is abo
 - [x] The median acceleration magnitude of every one of the 60 subjects lies within 8–12 m/s². Commit a small per-subject summary (e.g. `results/acc_units_by_subject.csv`) showing each subject's value and the units decision. **59/60 land in range** (`scripts/check_acc_units.py`); one subject (`BEF6C611-50DA-4971-A040-87FB979F3FC1`, raw median 3.16) is genuinely ambiguous and is flagged rather than guessed at -- neither g nor m/s² fits, so its accelerometer is left unconverted and out of range on purpose. Worth a mention in the report as a known data-quality limit, not a bug in the detector.
 - [x] A test covers both cases: a synthetic subject recorded in g and one recorded in m/s² both ingest to about 9.81 m/s² (`tests/test_oracle.py::test_accelerometer_already_in_g_is_converted_to_ms2`, `::test_accelerometer_already_in_ms2_is_not_double_converted`).
 - [x] `tests/fixtures/track_subj_real_{a,b}.jsonl` and `tests/fixtures/real_model_tracks/` are regenerated, and `python scripts/calibrate_stillness.py` reports **both** subjects near gravity (subj_real_a 9.78, subj_real_b 9.66 m/s², both "near gravity"). Note: subj_real_a's fixture files came out byte-identical to what was already committed -- it was already correctly detected as g-scale under the old unconditional conversion, so only subj_real_b's files actually changed.
-- [ ] The feature dataset is rebuilt and the CNN retrained, with before/after Phase 2 numbers in `docs/results_recognition.md`. **Pending** -- this needs a Kaggle run, not done locally.
+- [x] The feature dataset is rebuilt and the CNN retrained, with before/after Phase 2 numbers in `docs/results_recognition.md`. **Measured 2026-09-11** via `scripts/train_cnn.py` on Kaggle: CNN macro-F1 0.2749 -> 0.2893, logistic-regression baseline 0.1555 -> 0.2251 (moved more, since it reads accelerometer magnitude directly). Full analysis, including a qualitative shift in the model's confusion pattern (not just the numbers), in `docs/results_recognition.md`.
 
 ## After the fix (Member B will re-run)
 
