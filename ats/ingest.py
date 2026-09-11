@@ -23,15 +23,56 @@ from __future__ import annotations
 
 import csv
 import gzip
+import math
+import statistics
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-# ExtraSensory's raw_acc values are in units of g; our internal convention
+# ExtraSensory's raw_acc values are in units of g on some phones and already
+# in m/s^2 on others (docs/bug.md issue 1: a single unconditional conversion
+# left subj_real_b's values ~9.7x too large). Our internal convention
 # (matching the synthetic Phase 1 fixtures in scripts/make_dev_fixture.py) is
-# physical acceleration in m/s^2, so every accelerometer sample is scaled by
-# standard gravity on the way in.
+# physical acceleration in m/s^2, so the scale is decided per subject instead
+# of assumed -- see `_detect_acc_scale`.
 G_TO_MS2 = 9.80665
+
+# A phone at rest (or averaged over any real recording) reads a magnitude of
+# ~1g or ~9.81 m/s^2; nothing else is plausible. `_detect_acc_scale` buckets
+# a subject's median raw magnitude into one of these two ranges to decide
+# whether to apply G_TO_MS2, and refuses to guess outside them.
+_G_LIKE_RANGE = (0.5, 2.0)
+_MS2_LIKE_RANGE = (5.0, 15.0)
+
+# docs/bug.md's verification checklist: every subject's *converted* median
+# acceleration magnitude must land near gravity, whichever raw units it
+# started in. Outside this band the units decision itself was wrong.
+_CONVERTED_SANITY_RANGE = (8.0, 12.0)
+
+
+def _detect_acc_scale(
+    raw_rows_by_burst: list[tuple[tuple[float, float, float, float], ...]], subject_id: str
+) -> float:
+    """Decide g->m/s^2 scale from the subject's own raw accelerometer data
+    rather than assuming every subject's phone reports the same units
+    (docs/bug.md issue 1). Returns the multiplier to apply to every raw
+    x/y/z sample."""
+    magnitudes = [
+        math.sqrt(x * x + y * y + z * z) for rows in raw_rows_by_burst for _, x, y, z in rows
+    ]
+    if not magnitudes:
+        return G_TO_MS2
+    median_mag = statistics.median(magnitudes)
+    if _G_LIKE_RANGE[0] <= median_mag <= _G_LIKE_RANGE[1]:
+        return G_TO_MS2
+    if _MS2_LIKE_RANGE[0] <= median_mag <= _MS2_LIKE_RANGE[1]:
+        return 1.0
+    print(
+        f"WARNING: ats.ingest: subject {subject_id}'s median raw accelerometer magnitude is "
+        f"{median_mag:.2f}, not clearly g (~1) or m/s^2 (~9.8) -- leaving values unconverted "
+        f"rather than guessing a scale factor."
+    )
+    return 1.0
 
 # original_labels.zip column name -> canonical class, in the frozen order
 # (docs/TASKS.md Sec 0). The "main activity" category in the ExtraSensory app
@@ -222,14 +263,28 @@ def load_subject(data_dir: str | Path, subject_id: str) -> Subject:
     subdirectory, matching where that script writes them, as either zip
     archives (local) or already-extracted directories (e.g. Kaggle, which
     auto-extracts an uploaded dataset's zip files) -- see `_resolve_source`.
+
+    The labels archive is optional: an evaluation-time recording (PRD §9.4)
+    arrives without one, and every burst then gets `activity=None` rather
+    than raising (docs/bug.md issue 2), same as a minute the wearer never
+    self-reported.
     """
     meta_dir = Path(data_dir) / "_meta"
-    labels = load_original_labels(meta_dir, subject_id)
+    try:
+        labels = load_original_labels(meta_dir, subject_id)
+    except (FileNotFoundError, KeyError):
+        labels = {}
 
-    acc_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
+    raw_acc_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
     for ts, data in _iter_bursts(meta_dir, "raw_acc", subject_id, ".m_raw_acc.dat"):
-        raw = _sanitize_burst_rows(_read_dat_bytes(data), subject_id, ts)
-        acc_by_ts[ts] = tuple((t, x * G_TO_MS2, y * G_TO_MS2, z * G_TO_MS2) for t, x, y, z in raw)
+        raw_acc_by_ts[ts] = _sanitize_burst_rows(_read_dat_bytes(data), subject_id, ts)
+
+    scale = _detect_acc_scale(list(raw_acc_by_ts.values()), subject_id)
+    acc_by_ts = {
+        ts: tuple((t, x * scale, y * scale, z * scale) for t, x, y, z in raw)
+        for ts, raw in raw_acc_by_ts.items()
+    }
+    _check_acc_scale_sanity(acc_by_ts.values(), subject_id)
 
     gyro_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
     for ts, data in _iter_bursts(meta_dir, "proc_gyro", subject_id, ".m_proc_gyro.dat"):
@@ -245,3 +300,23 @@ def load_subject(data_dir: str | Path, subject_id: str) -> Subject:
         bursts.append(Burst(example_ts=float(ts), acc=acc, gyro=gyro, activity=labels.get(ts)))
 
     return Subject(subject_id=subject_id, bursts=tuple(bursts))
+
+
+def _check_acc_scale_sanity(
+    acc_bursts, subject_id: str
+) -> None:
+    """docs/bug.md issue 1 verification checklist: after conversion, a
+    subject's median acceleration magnitude must sit near gravity. Warn
+    rather than raise -- a bad reading here should surface in
+    `results/acc_units_by_subject.csv`, not take down a batch ingestion
+    run partway through."""
+    magnitudes = [math.sqrt(x * x + y * y + z * z) for rows in acc_bursts for _, x, y, z in rows]
+    if not magnitudes:
+        return
+    median_mag = statistics.median(magnitudes)
+    if not (_CONVERTED_SANITY_RANGE[0] <= median_mag <= _CONVERTED_SANITY_RANGE[1]):
+        print(
+            f"WARNING: ats.ingest: subject {subject_id}'s median acceleration magnitude after "
+            f"unit conversion is {median_mag:.2f} m/s^2, outside the expected {_CONVERTED_SANITY_RANGE} "
+            f"(gravity) range -- the units decision for this subject may be wrong."
+        )

@@ -156,6 +156,37 @@ def test_accelerometer_units_converted_to_ms2(data_dir):
     assert burst.acc[0][3] == pytest.approx(9.80665)
 
 
+def _make_data_dir(tmp_path, acc_z: float) -> Path:
+    """A minimal single-burst subject whose raw accelerometer z value is
+    `acc_z` -- docs/bug.md issue 1's verification checklist: a synthetic
+    subject recorded in g (acc_z=1.0) and one recorded in m/s^2
+    (acc_z=9.8) must both ingest to about 9.81 m/s^2."""
+    root = tmp_path / "units_layout"
+    meta = root / "_meta"
+    meta.mkdir(parents=True)
+    rows = [{"timestamp": "1000", "original_label:SITTING": "1"}]
+    _write_zip(meta / "original_labels.zip", {f"{SUBJECT}.original_labels.csv.gz": _labels_csv_gz(rows)})
+    _write_zip(
+        meta / "raw_acc.zip",
+        {f"raw_acc/{SUBJECT}/1000.m_raw_acc.dat": _burst_dat(500.0, 800, 40.0, 0.0, 0.0, acc_z)},
+    )
+    _write_zip(
+        meta / "proc_gyro.zip",
+        {f"proc_gyro/{SUBJECT}/1000.m_proc_gyro.dat": _burst_dat(500.0, 800, 40.0, 0.0, 0.0, 0.0)},
+    )
+    return root
+
+
+def test_accelerometer_already_in_g_is_converted_to_ms2(tmp_path):
+    subject = load_subject(_make_data_dir(tmp_path, acc_z=1.0), SUBJECT)
+    assert subject.bursts[0].acc[0][3] == pytest.approx(9.80665)
+
+
+def test_accelerometer_already_in_ms2_is_not_double_converted(tmp_path):
+    subject = load_subject(_make_data_dir(tmp_path, acc_z=9.8), SUBJECT)
+    assert subject.bursts[0].acc[0][3] == pytest.approx(9.8)
+
+
 def test_globalize_anchors_bursts_with_real_gaps_between_them(data_dir):
     subject = load_subject(data_dir, SUBJECT)
     globalized = globalize_subject(subject)

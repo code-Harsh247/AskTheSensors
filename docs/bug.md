@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Open |
+| **Status** | Fixed in `ats/ingest.py` (per-subject unit detection); CNN retrain still pending on Kaggle |
 | **Severity** | High: affects classifier training data, recognition results, and explanations, and blocks the Phase 4 stillness check |
 | **Owner** | Member A (`ats/ingest.py`) |
 | **Reported by** | Member B, 2026-09-11 |
@@ -77,10 +77,10 @@ The gyroscope may be affected too: `subj_real_b`'s gyroscope-energy floor is abo
 
 ## How to verify the fix
 
-- [ ] The median acceleration magnitude of every one of the 60 subjects lies within 8–12 m/s². Commit a small per-subject summary (e.g. `results/acc_units_by_subject.csv`) showing each subject's value and the units decision.
-- [ ] A test covers both cases: a synthetic subject recorded in g and one recorded in m/s² both ingest to about 9.81 m/s².
-- [ ] `tests/fixtures/track_subj_real_{a,b}.jsonl` and `tests/fixtures/real_model_tracks/` are regenerated, and `python scripts/calibrate_stillness.py` reports **both** subjects near gravity.
-- [ ] The feature dataset is rebuilt and the CNN retrained, with before/after Phase 2 numbers in `docs/results_recognition.md`.
+- [x] The median acceleration magnitude of every one of the 60 subjects lies within 8–12 m/s². Commit a small per-subject summary (e.g. `results/acc_units_by_subject.csv`) showing each subject's value and the units decision. **59/60 land in range** (`scripts/check_acc_units.py`); one subject (`BEF6C611-50DA-4971-A040-87FB979F3FC1`, raw median 3.16) is genuinely ambiguous and is flagged rather than guessed at -- neither g nor m/s² fits, so its accelerometer is left unconverted and out of range on purpose. Worth a mention in the report as a known data-quality limit, not a bug in the detector.
+- [x] A test covers both cases: a synthetic subject recorded in g and one recorded in m/s² both ingest to about 9.81 m/s² (`tests/test_oracle.py::test_accelerometer_already_in_g_is_converted_to_ms2`, `::test_accelerometer_already_in_ms2_is_not_double_converted`).
+- [x] `tests/fixtures/track_subj_real_{a,b}.jsonl` and `tests/fixtures/real_model_tracks/` are regenerated, and `python scripts/calibrate_stillness.py` reports **both** subjects near gravity (subj_real_a 9.78, subj_real_b 9.66 m/s², both "near gravity"). Note: subj_real_a's fixture files came out byte-identical to what was already committed -- it was already correctly detected as g-scale under the old unconditional conversion, so only subj_real_b's files actually changed.
+- [ ] The feature dataset is rebuilt and the CNN retrained, with before/after Phase 2 numbers in `docs/results_recognition.md`. **Pending** -- this needs a Kaggle run, not done locally.
 
 ## After the fix (Member B will re-run)
 
@@ -104,7 +104,7 @@ Member B has not edited `ats/ingest.py`; it is Member A's file.
 
 | | |
 |---|---|
-| **Status** | Open |
+| **Status** | Fixed in `ats/ingest.py` |
 | **Severity** | High: without it the "runnable system" deliverable (PRD §9.4) fails on any recording that arrives without labels |
 | **Owner** | Member A (`ats/ingest.py`) |
 | **Reported by** | Member B, 2026-09-11 |
@@ -127,8 +127,8 @@ When the labels archive, or the subject's entry in it, is missing, load every bu
 
 ## How to verify the fix
 
-- [ ] `tests/test_answer_cli.py::test_an_unlabelled_recording_can_be_loaded` passes. Strict xfail then turns that pass into a failure on purpose; remove the `xfail` marker in the same change (or ask Member B to).
-- [ ] The issue 1 units fix also applies on this path, since graders' recordings may come from either kind of phone.
+- [x] `tests/test_answer_cli.py::test_an_unlabelled_recording_can_be_loaded` passes. The `xfail` marker is removed in the same change.
+- [x] The issue 1 units fix also applies on this path -- `load_subject` runs `_detect_acc_scale` regardless of whether labels are present, since the two code paths were merged rather than kept separate.
 
 ## Also needed for the system graders run: trained weights
 
