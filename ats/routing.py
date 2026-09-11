@@ -70,6 +70,8 @@ def find_time(text: str) -> float | None:
 
 
 _OPEN_WORLD = (
+    ("restless", re.compile(r"\b(restless\w*|fidget\w*|squirm\w*|tossing and turning)\b")),
+    ("sleep", re.compile(r"\b(sleep\w*|slept|asleep|nap|naps|napped|napping|doze|dozed|dozing)\b")),
     (
         "activity_balance",
         re.compile(r"\bmostly\b.*\b(rest|active|sedentary)\b|\b(at rest|sedentary)\b.*\bor\b.*\bactive\b"),

@@ -170,6 +170,48 @@ def test_the_floor_is_scaled_by_coverage():
     assert not is_still(moving, floor)  # 0.016 - 0.5 * 0.02 = 0.006, over 0.005
 
 
+def test_restlessness_is_movement_while_the_posture_stays_at_rest():
+    # Sitting for three minutes, but two of them carry a moving signal: 20 of
+    # 30 resting windows are not still, a majority.
+    windows = minutes([(0, "SITTING", "STANDING_MOVING"), (60, "SITTING", "STANDING_MOVING"), (120, "SITTING")])
+    answer = ask(windows, "Was the user fidgeting?")
+    assert answer["answer"] == "Likely yes"
+    assert answer["cited_intervals"] == [[0.0, 180.0]]
+    assert "67% of the 30 windows" in answer["explanation"]
+
+
+def test_a_still_rest_is_not_restless_and_cites_every_resting_interval():
+    windows = minutes([(0, "SITTING"), (60, "WALKING"), (120, "LYING"), (180, "LYING")])
+    answer = ask(windows, "Was the user restless?")
+    assert answer["answer"] == "Likely no"
+    assert answer["cited_intervals"] == [[0.0, 60.0], [120.0, 240.0]]  # the walking minute is not rest
+
+
+def test_restlessness_is_not_judged_without_any_rest():
+    windows = minutes([(0, "WALKING"), (60, "RUNNING")])
+    assert ask(windows, "Was the user fidgeting?")["answer"] == "N/A"
+
+
+def test_sleep_is_argued_from_stillness_and_says_what_it_cannot_tell():
+    windows = minutes([(m, "LYING") for m in (0, 60, 120, 180, 240, 300)])
+    answer = ask(windows, "Did the user take a nap?")
+    assert answer["answer"] == "Likely yes"
+    assert answer["activity_event"] == "Sustained stillness, consistent with sleep"
+    assert "cannot tell sleep from resting awake" in answer["explanation"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Was the user driving?", "Was the user climbing stairs?", "Was the user dancing?", "Was the user on a bus?"],
+)
+def test_behaviours_with_no_calibrated_signature_are_not_guessed(text):
+    """No signal signature for these is calibrated, so the honest answer is an
+    explicit abstention, never the nearest of the seven labels."""
+    windows = minutes([(0, "SITTING"), (60, "BICYCLING"), (120, "WALKING")])
+    answer = ask(windows, text)
+    assert (answer["answer"], answer["cited_intervals"]) == ("N/A", [])
+
+
 def test_an_offset_does_not_make_movement_look_still():
     windows = _gyro_offset(minutes([(0, "SITTING"), (60, "SITTING"), (120, "BICYCLING"), (180, "SITTING")]))
     answer = ask(windows, "Was the user using a wheeled or pedal-based mode of movement?")
