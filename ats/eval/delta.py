@@ -117,6 +117,17 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return table
 
 
+def labelled_windows(
+    real_windows: Sequence[dict[str, Any]], oracle_windows: Sequence[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Real-model windows the oracle also covers. The oracle skips recorded
+    minutes nobody labelled, so there is no truth there: a prediction on them
+    is neither right nor wrong, and scoring it would blame recognition for a
+    difference in coverage."""
+    covered = {(round(w["t_start"], 3), round(w["t_end"], 3)) for w in oracle_windows}
+    return [w for w in real_windows if (round(w["t_start"], 3), round(w["t_end"], 3)) in covered]
+
+
 def _track(directory: Path, subject: str) -> Path:
     path = directory / f"track_{subject}.jsonl"
     if not path.exists():
@@ -132,6 +143,7 @@ def run_delta(
     seed: int = 0,
     questions_dir: Path = QUESTIONS_DIR,
     oracle_dir: Path = FIXTURES_DIR,
+    labelled_only: bool = True,
 ) -> dict[str, Any]:
     """Compare every dev subject's oracle track with its real track. Pass
     exactly one source: `real_dir` (a directory of track_<subject>.jsonl
@@ -145,6 +157,7 @@ def run_delta(
     subjects = dev_subjects(questions_dir)
     rows: list[dict[str, Any]] = []
     withheld: dict[str, dict[str, int]] = {}
+    unlabelled: dict[str, int] = {}
     for index, subject in enumerate(subjects):
         questions = read_question_set(questions_dir / f"{subject}.json")["questions"]
         oracle_windows = load_track(_track(oracle_dir, subject))
@@ -154,6 +167,11 @@ def run_delta(
             real_windows = perturb_labels(oracle_windows, simulate_label_noise, seed + index)
         else:
             real_windows = perturb_bursts(oracle_windows, simulate_burst_noise, seed + index)
+        unlabelled[subject] = 0
+        if labelled_only:
+            kept = labelled_windows(real_windows, oracle_windows)
+            unlabelled[subject] = len(real_windows) - len(kept)
+            real_windows = kept
         subject_rows, withheld[subject] = compare_subject(subject, questions, oracle_windows, real_windows)
         rows.extend(subject_rows)
 
@@ -170,11 +188,19 @@ def run_delta(
         "subjects": subjects,
         "by_question_type": summarize(rows),
         "withheld_by_validator": withheld,
+        "labelled_only": labelled_only,
+        "real_windows_outside_labelled_time": unlabelled,
         "rows": rows,
     }
 
 
 def render_markdown(report: dict[str, Any]) -> str:
+    dropped = sum(report["real_windows_outside_labelled_time"].values())
+    compared_over = (
+        f"labelled time only ({dropped} real-model windows from minutes nobody labelled were set aside)"
+        if report["labelled_only"]
+        else "every recorded window, including minutes nobody labelled"
+    )
     lines = [
         "# Oracle vs real delta",
         "",
@@ -182,6 +208,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Oracle track: {report['oracle_source']}",
         f"- Questions: {report['questions_source']}",
         f"- Subjects: {', '.join(report['subjects'])}",
+        f"- Compared over: {compared_over}",
         "",
         '"Right" means correct, and grounded wherever the gold cites evidence (PRD 7.3.4).',
         "",

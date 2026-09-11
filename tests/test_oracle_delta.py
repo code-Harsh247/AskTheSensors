@@ -2,11 +2,14 @@
 its totals must reconcile."""
 
 import json
+import shutil
 
 import pytest
+from _windows import burst
 
+from ats.aggregate import load_track
 from ats.eval.delta import attribute, render_markdown, run_delta
-from ats.eval.dev import FIXTURES_DIR
+from ats.eval.dev import FIXTURES_DIR, QUESTIONS_DIR
 
 
 @pytest.mark.parametrize(
@@ -101,6 +104,41 @@ def test_a_wrong_answer_from_a_suitable_operator_is_blamed_on_reasoning(tmp_path
     )
     row = run_delta(real_dir=FIXTURES_DIR, questions_dir=questions_dir)["rows"][0]
     assert (row["operator"], row["layer"]) == ("duration", "reasoning")
+
+
+def _real_track_with_an_unlabelled_minute(tmp_path):
+    """subj_synth_a's own track plus one recorded minute, inside its
+    1080-1320 s gap, that the oracle has no label for."""
+    questions_dir = tmp_path / "questions"
+    questions_dir.mkdir()
+    shutil.copy(QUESTIONS_DIR / "subj_synth_a.json", questions_dir / "subj_synth_a.json")
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    windows = load_track(FIXTURES_DIR / "track_subj_synth_a.jsonl") + burst(1200, "WALKING")
+    (real_dir / "track_subj_synth_a.jsonl").write_text(
+        "".join(json.dumps(w) + "\n" for w in windows), encoding="utf-8"
+    )
+    return questions_dir, real_dir
+
+
+def test_unlabelled_minutes_are_set_aside_by_default(tmp_path):
+    questions_dir, real_dir = _real_track_with_an_unlabelled_minute(tmp_path)
+    report = run_delta(real_dir=real_dir, questions_dir=questions_dir)
+
+    overall = report["by_question_type"]["overall"]
+    assert overall["real_right"] == overall["n"]
+    assert report["real_windows_outside_labelled_time"] == {"subj_synth_a": 10}
+    assert "10 real-model windows from minutes nobody labelled" in render_markdown(report)
+
+
+def test_including_unlabelled_minutes_scores_predictions_where_no_truth_exists(tmp_path):
+    questions_dir, real_dir = _real_track_with_an_unlabelled_minute(tmp_path)
+    report = run_delta(real_dir=real_dir, questions_dir=questions_dir, labelled_only=False)
+
+    gap = next(r for r in report["rows"] if r["question_id"] == "subj_synth_a_t4_gap")
+    assert (gap["oracle_answer"], gap["real_answer"]) == ("N/A", "Walking")
+    overall = report["by_question_type"]["overall"]
+    assert overall["real_right"] < overall["n"]
 
 
 def test_a_missing_real_track_is_an_error(tmp_path):

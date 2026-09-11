@@ -36,6 +36,11 @@ def main() -> None:
     parser.add_argument("--oracle-dir", type=Path, default=FIXTURES_DIR)
     parser.add_argument("--questions-dir", type=Path, default=QUESTIONS_DIR)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--include-unlabelled",
+        action="store_true",
+        help="Also score real-model predictions on recorded minutes the oracle has no label for.",
+    )
     parser.add_argument("--out", type=Path, help="Output path without extension.")
     args = parser.parse_args()
 
@@ -46,8 +51,12 @@ def main() -> None:
         seed=args.seed,
         questions_dir=args.questions_dir,
         oracle_dir=args.oracle_dir,
+        labelled_only=not args.include_unlabelled,
     )
-    default_name = "oracle_delta" if args.real_dir else "oracle_delta_simulated"
+    if args.real_dir is None:
+        default_name = "oracle_delta_simulated"
+    else:
+        default_name = "oracle_delta_all_windows" if args.include_unlabelled else "oracle_delta"
     out = args.out or REPO_ROOT / "results" / default_name
     out.parent.mkdir(parents=True, exist_ok=True)
 
