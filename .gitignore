@@ -10,6 +10,12 @@ data/*
 # jointly, docs/bug.md issue 2's "Also needed" note.
 models/*
 !models/full/
+# The compressed configs are tiny too, and quant8 cannot be rebuilt without
+# the raw data (it calibrates on validation windows), so they are committed
+# for the Phase 5 results to reproduce from a clean checkout.
+!models/quant8/
+!models/pruned30/
+!models/pruned60/
 
 # Bulk/raw results — keep only small summary CSVs under results/
 results/raw/
