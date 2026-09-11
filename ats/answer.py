@@ -1,4 +1,12 @@
-"""CLI entry point: python -m ats.answer --questions <path> --track <path> --out <path>
+"""CLI entry point, the system graders run:
+
+    python -m ats.answer --recording <data_dir> --subject <id> --questions <path> --out <path>
+    python -m ats.answer --track <window_track.jsonl> --questions <path> --out <path>
+
+--recording runs Member A's recognition pipeline (ats.recognize) on a raw
+ExtraSensory-layout recording to build the window track; --track skips it with
+a track built earlier (e.g. by ats.oracle). --subject is needed because an
+ExtraSensory data directory can hold many subjects.
 
 Route each question to a typed operator, compute the answer deterministically
 from the activity timeline, attach the evidence behind it, and pass it
@@ -10,7 +18,9 @@ that is itself validated, and the rejection is reported rather than dropped.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from ats.aggregate import Timeline, build_timeline, load_track
@@ -28,10 +38,16 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m ats.answer",
         description="Answer natural-language questions about a wearable sensor recording, grounded in cited evidence.",
     )
-    parser.add_argument("--recording", help="Path to the sensor recording. Not needed when --track is supplied.")
+    parser.add_argument(
+        "--recording",
+        help="ExtraSensory-layout data directory holding the raw recording (the directory scripts/fetch_data.py writes, with _meta/ inside).",
+    )
+    parser.add_argument("--subject", help="Subject ID of the recording inside --recording.")
     parser.add_argument("--questions", required=True, help="Path to a question_set JSON file.")
     parser.add_argument("--track", help="Precomputed window_track JSONL (e.g. from ats.oracle) to use instead of running recognition.")
-    parser.add_argument("--model", help="Model config to use for recognition, e.g. 'full', 'quant8'.")
+    parser.add_argument("--model", default="models/full/activity_cnn.pt", help="Trained recognition model weights (.pt) for --recording.")
+    parser.add_argument("--model-id", default="full", help="model_id stamped on the window track built from --recording.")
+    parser.add_argument("--save-track", help="Also write the window track built from --recording to this JSONL path.")
     parser.add_argument("--out", required=True, help="Path to write answers to.")
     parser.add_argument("--format", choices=["text", "jsonl"], default="text", help="Output format.")
     parser.add_argument(
@@ -100,16 +116,31 @@ def answer_all(
     return answers, rejections
 
 
+def _recognise(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Build the window track from a raw recording with the trained model.
+    Imported here so the --track path never needs torch."""
+    from ats.recognize import build_track, load_model
+
+    windows = build_track(args.subject, args.recording, load_model(args.model), model_id=args.model_id)
+    if args.save_track:
+        path = Path(args.save_track)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for window in windows:
+                f.write(json.dumps(window, sort_keys=True) + "\n")
+    return windows
+
+
 def main(argv: list[str] | None = None) -> None:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
-    if not args.track:
-        raise NotImplementedError(
-            "Running recognition from a raw recording needs Member A's model "
-            "(Phase 3 integration). Supply --track for now."
-        )
+    if bool(args.track) == bool(args.recording):
+        parser.error("supply exactly one of --recording or --track")
+    if args.recording and not args.subject:
+        parser.error("--recording needs --subject, the recording's subject ID")
 
-    windows = load_track(args.track)
+    windows = load_track(args.track) if args.track else _recognise(args)
     questions = read_question_set(args.questions)["questions"]
     router: Router = route
     if args.router == "slm":
