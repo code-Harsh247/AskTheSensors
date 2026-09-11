@@ -65,6 +65,8 @@ These are settled **before** anyone writes logic, and are changed only by joint 
   python -m ats.eval   --pred <path> --gold <path> --out <dir>
   ```
   `ats.eval` **must also** expose `evaluate(pred, gold) -> dict` as an importable function. A calls it directly for the Figure 4 and Figure 5 sweeps; shelling out for hundreds of sweep points is both slow and fragile.
+
+  > **Extended 2026-09-11:** `ats.answer` also takes `--subject` (an ExtraSensory data directory holds many subjects), `--model` (a path to trained weights), `--save-track`, and the alternative `--track`. Exactly one of `--recording` or `--track` is required. The `--recording` path runs `ats.recognize` and is covered by `tests/test_answer_cli.py`, but it is blocked on real recordings until an unlabelled recording can be loaded ([bug.md](bug.md), issue 2).
 - **0.7** Create `docs/CITATIONS.md` as a **running** log, appended in the same commit as the work it describes. PRD §9.3 requires every external resource — dataset, pretrained model, software library, borrowed code fragment — to be cited **precisely at the point of use**. Each member appends their own entries as they use things; both maintain it. An in-code comment at the use site pointing at the entry is the cheapest way to keep the two in sync.
 - **0.8** Skim the four related readings in PRD §8.2 before locking the architecture, and note in `docs/CITATIONS.md` anything we borrow from them.
 - **0.9** Stub `ats.answer` and `ats.eval` so both CLIs exist and parse arguments, with `NotImplementedError` bodies.

@@ -97,3 +97,39 @@ python scripts/make_fig3.py
 The Phase 3 caveats and the 4B.3 status in docs/TASKS.md are then updated with the new numbers.
 
 Member B has not edited `ats/ingest.py`; it is Member A's file.
+
+---
+
+# Issue 2: a recording without labels cannot be loaded, which blocks the system graders run
+
+| | |
+|---|---|
+| **Status** | Open |
+| **Severity** | High: without it the "runnable system" deliverable (PRD §9.4) fails on any recording that arrives without labels |
+| **Owner** | Member A (`ats/ingest.py`) |
+| **Reported by** | Member B, 2026-09-11 |
+
+## Summary
+
+At evaluation time the graders hand over a recording and questions, not labels. The entry point is now wired for that: `python -m ats.answer --recording <data_dir> --subject <id> --questions <path> --out <path>` calls `ats.recognize.build_track`, which calls `ats.ingest.load_subject`. But `load_subject` reads the labels first (`ats/ingest.py:227`), and `load_original_labels` raises `FileNotFoundError` when `_meta/original_labels.zip` or its directory is missing (`ats/ingest.py:77-83`, `125-140`). So an unlabelled recording fails before any recognition runs.
+
+## How to reproduce
+
+```bash
+python -m pytest tests/test_answer_cli.py::test_an_unlabelled_recording_can_be_loaded -rxX
+```
+
+The test builds a minimal ExtraSensory-layout recording (`_meta/raw_acc/<id>/1000.m_raw_acc.dat` and `_meta/proc_gyro/<id>/1000.m_proc_gyro.dat`) with no labels archive. It currently raises `FileNotFoundError`, and is marked `xfail(strict=True)` so the suite stays green until the fix.
+
+## Suggested fix (your call)
+
+When the labels archive, or the subject's entry in it, is missing, load every burst with `activity=None`, the value already used for unlabelled minutes. If training should still insist on labels, put this behind an explicit flag and let `ats.recognize` pass it.
+
+## How to verify the fix
+
+- [ ] `tests/test_answer_cli.py::test_an_unlabelled_recording_can_be_loaded` passes. Strict xfail then turns that pass into a failure on purpose; remove the `xfail` marker in the same change (or ask Member B to).
+- [ ] The issue 1 units fix also applies on this path, since graders' recordings may come from either kind of phone.
+
+## Also needed for the system graders run: trained weights
+
+`--model` defaults to `models/full/activity_cnn.pt`, but `models/` is gitignored and the weights are not on Member B's machine, so the full path can't be run there yet. The model is about 10k parameters (tens of kilobytes), so committing the final trained weights may be the simplest way to ship a runnable system. Decide together, and check with the instructor what format the evaluation recordings will arrive in.
