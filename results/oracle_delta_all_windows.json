@@ -1,0 +1,558 @@
+{
+  "by_question_type": {
+    "comparison": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 2,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 3,
+      "oracle_right": 3,
+      "real_right": 1
+    },
+    "count": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 2,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 2,
+      "oracle_right": 2,
+      "real_right": 0
+    },
+    "duration": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 5,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 5,
+      "oracle_right": 5,
+      "real_right": 0
+    },
+    "grounding": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 6,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 8,
+      "oracle_right": 8,
+      "real_right": 2
+    },
+    "identification": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 2,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 4,
+      "oracle_right": 4,
+      "real_right": 2
+    },
+    "open_world": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 2,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 8,
+      "oracle_right": 8,
+      "real_right": 6
+    },
+    "overall": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 19,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 34,
+      "oracle_right": 34,
+      "real_right": 15
+    },
+    "verification": {
+      "losses": {
+        "reasoning": 0,
+        "recognition": 0,
+        "routing": 0
+      },
+      "masked_bugs": 0,
+      "n": 4,
+      "oracle_right": 4,
+      "real_right": 4
+    }
+  },
+  "labelled_only": false,
+  "oracle_source": "tests\\fixtures",
+  "questions_source": "data\\questions_dev_v2",
+  "real_source": "tests\\fixtures\\real_model_tracks",
+  "real_windows_outside_labelled_time": {
+    "subj_real_a": 0,
+    "subj_real_b": 0
+  },
+  "rows": [
+    {
+      "gold_answer": "Sitting",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "identify",
+      "oracle_answer": "Sitting",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t1_id0",
+      "question_type": "identification",
+      "real_answer": "Lying down",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Walking",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "identify",
+      "oracle_answer": "Walking",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t1_id1",
+      "question_type": "identification",
+      "real_answer": "Lying down",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Yes",
+      "is_loss": false,
+      "layer": null,
+      "operator": "verify",
+      "oracle_answer": "Yes",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t1_ver0",
+      "question_type": "verification",
+      "real_answer": "Yes",
+      "real_right": true,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "No",
+      "is_loss": false,
+      "layer": null,
+      "operator": "verify",
+      "oracle_answer": "No",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t1_ver1",
+      "question_type": "verification",
+      "real_answer": "No",
+      "real_right": true,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "66386 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "duration",
+      "oracle_answer": "66386 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t2_dur0",
+      "question_type": "duration",
+      "real_answer": "26148 seconds",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "109 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "duration",
+      "oracle_answer": "109 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t2_dur1",
+      "question_type": "duration",
+      "real_answer": "7085 seconds",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "0 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "duration",
+      "oracle_answer": "0 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t2_dur_absent",
+      "question_type": "duration",
+      "real_answer": "4979 seconds",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "15",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "count",
+      "oracle_answer": "15 separate bouts",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t2_count0",
+      "question_type": "count",
+      "real_answer": "73 separate bouts",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Sitting",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "compare",
+      "oracle_answer": "Sitting",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t2_cmp0",
+      "question_type": "comparison",
+      "real_answer": "Lying down",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Standing in place",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "ground",
+      "oracle_answer": "Standing in place",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t3_ground0",
+      "question_type": "grounding",
+      "real_answer": "Standing in place",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Walking",
+      "is_loss": false,
+      "layer": null,
+      "operator": "ground",
+      "oracle_answer": "Walking",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t3_ground1",
+      "question_type": "grounding",
+      "real_answer": "Walking",
+      "real_right": true,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Standing and moving",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "ground",
+      "oracle_answer": "Standing and moving",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t3_ground2",
+      "question_type": "grounding",
+      "real_answer": "Standing and moving",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Yes, walking began at 9356 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "onset",
+      "oracle_answer": "Yes, walking began at 9356 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t3_onset",
+      "question_type": "grounding",
+      "real_answer": "Yes, walking began at 1411 seconds",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Likely yes",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "open_world",
+      "oracle_answer": "Likely yes",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t4_rest",
+      "question_type": "open_world",
+      "real_answer": "Likely yes",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "No",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "open_world",
+      "oracle_answer": "No",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t4_wheeled",
+      "question_type": "open_world",
+      "real_answer": "Yes",
+      "real_right": false,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Mostly at rest",
+      "is_loss": false,
+      "layer": null,
+      "operator": "open_world",
+      "oracle_answer": "Mostly at rest",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t4_balance",
+      "question_type": "open_world",
+      "real_answer": "Mostly at rest",
+      "real_right": true,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "N/A",
+      "is_loss": false,
+      "layer": null,
+      "operator": "identify",
+      "oracle_answer": "N/A",
+      "oracle_right": true,
+      "question_id": "subj_real_a_t4_gap",
+      "question_type": "open_world",
+      "real_answer": "N/A",
+      "real_right": true,
+      "subject": "subj_real_a"
+    },
+    {
+      "gold_answer": "Bicycling",
+      "is_loss": false,
+      "layer": null,
+      "operator": "identify",
+      "oracle_answer": "Bicycling",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t1_id0",
+      "question_type": "identification",
+      "real_answer": "Bicycling",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Lying down",
+      "is_loss": false,
+      "layer": null,
+      "operator": "identify",
+      "oracle_answer": "Lying down",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t1_id1",
+      "question_type": "identification",
+      "real_answer": "Lying down",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Yes",
+      "is_loss": false,
+      "layer": null,
+      "operator": "verify",
+      "oracle_answer": "Yes",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t1_ver0",
+      "question_type": "verification",
+      "real_answer": "Yes",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "No",
+      "is_loss": false,
+      "layer": null,
+      "operator": "verify",
+      "oracle_answer": "No",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t1_ver1",
+      "question_type": "verification",
+      "real_answer": "No",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "167675 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "duration",
+      "oracle_answer": "167675 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t2_dur0",
+      "question_type": "duration",
+      "real_answer": "70726 seconds",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "1084 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "duration",
+      "oracle_answer": "1084 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t2_dur1",
+      "question_type": "duration",
+      "real_answer": "11722 seconds",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "5",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "count",
+      "oracle_answer": "5 separate bouts",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t2_count0",
+      "question_type": "count",
+      "real_answer": "103 separate bouts",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Running",
+      "is_loss": false,
+      "layer": null,
+      "operator": "compare",
+      "oracle_answer": "Running",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t2_cmp0",
+      "question_type": "comparison",
+      "real_answer": "Running",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Sitting",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "compare",
+      "oracle_answer": "Sitting",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t2_cmp1",
+      "question_type": "comparison",
+      "real_answer": "Lying down",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Running",
+      "is_loss": false,
+      "layer": null,
+      "operator": "ground",
+      "oracle_answer": "Running",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t3_ground0",
+      "question_type": "grounding",
+      "real_answer": "Running",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Walking",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "ground",
+      "oracle_answer": "Walking",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t3_ground1",
+      "question_type": "grounding",
+      "real_answer": "Walking",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Standing in place",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "ground",
+      "oracle_answer": "Standing in place",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t3_ground2",
+      "question_type": "grounding",
+      "real_answer": "Standing in place",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Yes, bicycling began at 2866 seconds",
+      "is_loss": true,
+      "layer": "recognition",
+      "operator": "onset",
+      "oracle_answer": "Yes, bicycling began at 2866 seconds",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t3_onset",
+      "question_type": "grounding",
+      "real_answer": "Yes, bicycling began at 2785 seconds",
+      "real_right": false,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Likely yes",
+      "is_loss": false,
+      "layer": null,
+      "operator": "open_world",
+      "oracle_answer": "Likely yes",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t4_rest",
+      "question_type": "open_world",
+      "real_answer": "Likely yes",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Yes",
+      "is_loss": false,
+      "layer": null,
+      "operator": "open_world",
+      "oracle_answer": "Yes",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t4_wheeled",
+      "question_type": "open_world",
+      "real_answer": "Yes",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "Mostly at rest",
+      "is_loss": false,
+      "layer": null,
+      "operator": "open_world",
+      "oracle_answer": "Mostly at rest",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t4_balance",
+      "question_type": "open_world",
+      "real_answer": "Mostly at rest",
+      "real_right": true,
+      "subject": "subj_real_b"
+    },
+    {
+      "gold_answer": "N/A",
+      "is_loss": false,
+      "layer": null,
+      "operator": "identify",
+      "oracle_answer": "N/A",
+      "oracle_right": true,
+      "question_id": "subj_real_b_t4_gap",
+      "question_type": "open_world",
+      "real_answer": "N/A",
+      "real_right": true,
+      "subject": "subj_real_b"
+    }
+  ],
+  "subjects": [
+    "subj_real_a",
+    "subj_real_b"
+  ],
+  "withheld_by_validator": {
+    "subj_real_a": {
+      "oracle": 0,
+      "real": 0
+    },
+    "subj_real_b": {
+      "oracle": 0,
+      "real": 0
+    }
+  }
+}
