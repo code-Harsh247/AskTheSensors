@@ -3,13 +3,13 @@
     "comparison": {
       "losses": {
         "reasoning": 0,
-        "recognition": 2,
+        "recognition": 3,
         "routing": 0
       },
       "masked_bugs": 0,
       "n": 3,
       "oracle_right": 3,
-      "real_right": 1
+      "real_right": 0
     },
     "count": {
       "losses": {
@@ -36,13 +36,13 @@
     "grounding": {
       "losses": {
         "reasoning": 0,
-        "recognition": 6,
+        "recognition": 5,
         "routing": 0
       },
       "masked_bugs": 0,
       "n": 8,
       "oracle_right": 8,
-      "real_right": 2
+      "real_right": 3
     },
     "identification": {
       "losses": {
@@ -120,7 +120,7 @@
       "oracle_right": true,
       "question_id": "subj_real_a_t1_id1",
       "question_type": "identification",
-      "real_answer": "Lying down",
+      "real_answer": "Sitting",
       "real_right": false,
       "subject": "subj_real_a"
     },
@@ -159,7 +159,7 @@
       "oracle_right": true,
       "question_id": "subj_real_a_t2_dur0",
       "question_type": "duration",
-      "real_answer": "26027 seconds",
+      "real_answer": "29215 seconds",
       "real_right": false,
       "subject": "subj_real_a"
     },
@@ -172,7 +172,7 @@
       "oracle_right": true,
       "question_id": "subj_real_a_t2_dur1",
       "question_type": "duration",
-      "real_answer": "6926 seconds",
+      "real_answer": "39915 seconds",
       "real_right": false,
       "subject": "subj_real_a"
     },
@@ -185,7 +185,7 @@
       "oracle_right": true,
       "question_id": "subj_real_a_t2_dur_absent",
       "question_type": "duration",
-      "real_answer": "4979 seconds",
+      "real_answer": "4739 seconds",
       "real_right": false,
       "subject": "subj_real_a"
     },
@@ -198,7 +198,7 @@
       "oracle_right": true,
       "question_id": "subj_real_a_t2_count0",
       "question_type": "count",
-      "real_answer": "60 separate bouts",
+      "real_answer": "46 separate bouts",
       "real_right": false,
       "subject": "subj_real_a"
     },
@@ -380,7 +380,7 @@
       "oracle_right": true,
       "question_id": "subj_real_b_t2_dur0",
       "question_type": "duration",
-      "real_answer": "64081 seconds",
+      "real_answer": "15825 seconds",
       "real_right": false,
       "subject": "subj_real_b"
     },
@@ -393,7 +393,7 @@
       "oracle_right": true,
       "question_id": "subj_real_b_t2_dur1",
       "question_type": "duration",
-      "real_answer": "10155 seconds",
+      "real_answer": "12629 seconds",
       "real_right": false,
       "subject": "subj_real_b"
     },
@@ -406,21 +406,21 @@
       "oracle_right": true,
       "question_id": "subj_real_b_t2_count0",
       "question_type": "count",
-      "real_answer": "86 separate bouts",
+      "real_answer": "42 separate bouts",
       "real_right": false,
       "subject": "subj_real_b"
     },
     {
       "gold_answer": "Running",
-      "is_loss": false,
-      "layer": null,
+      "is_loss": true,
+      "layer": "recognition",
       "operator": "compare",
       "oracle_answer": "Running",
       "oracle_right": true,
       "question_id": "subj_real_b_t2_cmp0",
       "question_type": "comparison",
-      "real_answer": "Running",
-      "real_right": true,
+      "real_answer": "Walking",
+      "real_right": false,
       "subject": "subj_real_b"
     },
     {
@@ -477,15 +477,15 @@
     },
     {
       "gold_answer": "Yes, bicycling began at 2866 seconds",
-      "is_loss": true,
-      "layer": "recognition",
+      "is_loss": false,
+      "layer": null,
       "operator": "onset",
       "oracle_answer": "Yes, bicycling began at 2866 seconds",
       "oracle_right": true,
       "question_id": "subj_real_b_t3_onset",
       "question_type": "grounding",
-      "real_answer": "Yes, bicycling began at 2785 seconds",
-      "real_right": false,
+      "real_answer": "Yes, bicycling began at 2919 seconds",
+      "real_right": true,
       "subject": "subj_real_b"
     },
     {
