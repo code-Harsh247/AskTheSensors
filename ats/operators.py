@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
 from ats.aggregate import Interval, Timeline
-from ats.evidence import describe, summarize
+from ats.evidence import describe, summarize, summarize_each
 from ats.routing import OperatorCall
 from ats.serialize import format_seconds as fs
 from ats.vocab import ACTIVE, PROLONGED_S, SEDENTARY, VIGOROUS, display
@@ -312,8 +312,8 @@ def _balance(call: OperatorCall, timeline: Timeline, windows: Windows) -> Findin
 
 def _movement_extreme(lowest: bool) -> Callable[[OperatorCall, Timeline, Windows], Finding]:
     def operator(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding:
-        scored = [(iv, summarize(windows, (iv.as_tuple(),))) for iv in timeline.intervals]
-        scored = [(iv, s) for iv, s in scored if s is not None]
+        summaries = summarize_each(windows, _spans(timeline.intervals))
+        scored = [(iv, s) for iv, s in zip(timeline.intervals, summaries) if s is not None]
         if not scored:
             return _no_data()
         if lowest:

@@ -6,6 +6,7 @@ the language layer.
 
 from __future__ import annotations
 
+import bisect
 import statistics
 from dataclasses import dataclass
 from typing import Any, Sequence
@@ -34,40 +35,43 @@ class SignalSummary:
     cadence_share: float
 
 
+def _centre(window: dict[str, Any]) -> float:
+    return (window["t_start"] + window["t_end"]) / 2.0
+
+
+def _merge(spans: Sequence[Span]) -> list[Span]:
+    merged: list[Span] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 def windows_in(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> list[dict[str, Any]]:
     """Windows whose centre falls inside any span. Using the centre assigns an
-    overlapping window to exactly one side of an activity boundary."""
-    return [
-        w
-        for w in windows
-        if any(start <= (w["t_start"] + w["t_end"]) / 2.0 < end for start, end in spans)
-    ]
+    overlapping window to exactly one side of an activity boundary. Binary
+    search keeps this fast on real recordings with thousands of bouts."""
+    merged = _merge(spans)
+    starts = [start for start, _ in merged]
+    members: list[dict[str, Any]] = []
+    for window in windows:
+        centre = _centre(window)
+        i = bisect.bisect_right(starts, centre) - 1
+        if i >= 0 and centre < merged[i][1]:
+            members.append(window)
+    return members
 
 
-def _union_length(spans: Sequence[Span]) -> float:
-    total = 0.0
-    current: list[float] | None = None
-    for start, end in sorted(spans):
-        if current is None or start > current[1]:
-            if current is not None:
-                total += current[1] - current[0]
-            current = [start, end]
-        else:
-            current[1] = max(current[1], end)
-    if current is not None:
-        total += current[1] - current[0]
-    return total
-
-
-def summarize(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> SignalSummary | None:
-    members = windows_in(windows, spans)
+def _summary_of(members: Sequence[dict[str, Any]]) -> SignalSummary | None:
     if not members:
         return None
     features = [w["feature_summary"] for w in members]
     cadences = [f["dominant_cadence_hz"] for f in features if f["dominant_cadence_hz"] > 0]
     return SignalSummary(
         n_windows=len(members),
-        recorded_s=_union_length([(w["t_start"], w["t_end"]) for w in members]),
+        recorded_s=sum(end - start for start, end in _merge([(w["t_start"], w["t_end"]) for w in members])),
         acc_mag_mean=statistics.fmean(f["acc_mag_mean"] for f in features),
         acc_mag_std=statistics.fmean(f["acc_mag_std"] for f in features),
         gyro_energy=statistics.fmean(
@@ -76,6 +80,24 @@ def summarize(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> Signa
         cadence_hz=statistics.median(cadences) if cadences else 0.0,
         cadence_share=len(cadences) / len(members),
     )
+
+
+def summarize(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> SignalSummary | None:
+    return _summary_of(windows_in(windows, spans))
+
+
+def summarize_each(windows: Sequence[dict[str, Any]], spans: Sequence[Span]) -> list[SignalSummary | None]:
+    """One summary per span, in a single pass over the windows. Spans must not
+    overlap, which holds for timeline intervals."""
+    order = sorted(range(len(spans)), key=lambda i: spans[i][0])
+    starts = [spans[i][0] for i in order]
+    buckets: list[list[dict[str, Any]]] = [[] for _ in spans]
+    for window in windows:
+        centre = _centre(window)
+        k = bisect.bisect_right(starts, centre) - 1
+        if k >= 0 and centre < spans[order[k]][1]:
+            buckets[order[k]].append(window)
+    return [_summary_of(bucket) for bucket in buckets]
 
 
 def describe(summary: SignalSummary | None) -> str:

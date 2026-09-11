@@ -11,6 +11,7 @@ state numbers that survive recomputation.
 
 from __future__ import annotations
 
+import bisect
 from typing import Any
 
 from ats.aggregate import Timeline
@@ -40,8 +41,15 @@ def grounding_problems(answer: dict[str, Any], call: OperatorCall, timeline: Tim
     if answer["evidence"]["timestamps"] != format_intervals(cited):
         problems.append("evidence timestamps text does not match cited_intervals")
 
+    # Timeline intervals are sorted and non-overlapping, so the only interval
+    # that could contain a cited span is the last one starting at or before it.
+    starts = [iv.t_start for iv in timeline.intervals]
     for start, end in cited:
-        if not any(iv.t_start - _EPS <= start and end <= iv.t_end + _EPS for iv in timeline.intervals):
+        i = bisect.bisect_right(starts, start + _EPS) - 1
+        containing = timeline.intervals[i] if i >= 0 else None
+        if containing is None or not (
+            containing.t_start - _EPS <= start and end <= containing.t_end + _EPS
+        ):
             problems.append(
                 f"cited interval {format_seconds(start)}-{format_seconds(end)} s is not inside any timeline interval"
             )
