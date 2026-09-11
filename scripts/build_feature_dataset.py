@@ -66,7 +66,7 @@ from ats.ingest import load_subject  # noqa: E402
 from ats.model import INPUT_CHANNELS  # noqa: E402
 from ats.resample import globalize_subject  # noqa: E402
 from ats.splits import load_splits  # noqa: E402
-from ats.windowing import HOP_S, WINDOW_LENGTH_S, Window, label_for_window, make_windows  # noqa: E402
+from ats.windowing import HOP_S, WINDOW_LENGTH_S, label_for_window, make_windows, window_to_tensor  # noqa: E402
 
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "raw"
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "raw"
@@ -83,41 +83,10 @@ LABEL_INDEX = {c: i for i, c in enumerate(CANONICAL_CLASSES)}
 # where a real gap ate a meaningful fraction of the window.
 COVERAGE_THRESHOLD = 0.95
 
-# (source, axis) per entry of ats.model.INPUT_CHANNELS, in that exact order.
-_CHANNEL_SOURCE = [("acc", 0), ("acc", 1), ("acc", 2), ("gyro", 0), ("gyro", 1), ("gyro", 2)]
-
-
-def _fill_gaps(values: list[float | None]) -> list[float]:
-    """Forward-fill, then back-fill, any remaining None left by
-    ats/resample.py's interpolation. Only ever applied to windows already
-    above COVERAGE_THRESHOLD, so at most a handful of samples per window --
-    a reasonable, simple choice for that little residual gap, and one a raw
-    tensor (which can't hold None) requires either way."""
-    filled = list(values)
-    last = None
-    for i, v in enumerate(filled):
-        if v is None:
-            filled[i] = last
-        else:
-            last = v
-    first = next((v for v in filled if v is not None), None)
-    if first is None:
-        raise ValueError("window has no real samples at all; should have failed the coverage filter")
-    for i, v in enumerate(filled):
-        if v is None:
-            filled[i] = first
-        else:
-            break
-    return filled  # type: ignore[return-value]
-
-
-def raw_tensor_for_window(w: Window) -> np.ndarray:
-    """(len(INPUT_CHANNELS), n_timesteps) float32 array, gap-filled."""
-    rows = []
-    for source, axis in _CHANNEL_SOURCE:
-        samples = w.acc if source == "acc" else w.gyro
-        rows.append(_fill_gaps([sample[axis] for sample in samples]))
-    return np.asarray(rows, dtype=np.float32)
+# Gap-filling and the raw-tensor format live in ats/windowing.py
+# (window_to_tensor), shared with ats/recognize.py's live inference path so
+# training data and inference input can never silently diverge.
+raw_tensor_for_window = window_to_tensor
 
 
 def rows_for_subject(subject_id: str, split: str, data_dir: Path):

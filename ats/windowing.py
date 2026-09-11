@@ -213,3 +213,42 @@ def feature_summary(window: Window, hz: float = TARGET_HZ) -> dict[str, float]:
         "gyro_energy_y": gyro_energy[1],
         "gyro_energy_z": gyro_energy[2],
     }
+
+
+# (source, axis) per entry of ats.model.INPUT_CHANNELS, in that exact order.
+# Shared by scripts/build_feature_dataset.py (training data) and
+# ats/recognize.py (live inference), so the two can never silently diverge on
+# what a "channel" means.
+_CHANNEL_SOURCE = (("acc", 0), ("acc", 1), ("acc", 2), ("gyro", 0), ("gyro", 1), ("gyro", 2))
+
+
+def fill_gaps(values: list[float | None]) -> list[float]:
+    """Forward-fill, then back-fill, any None left by ats/resample.py's
+    interpolation -- a raw tensor (for the CNN) can't hold None, so any
+    caller that needs one goes through here rather than reinventing this."""
+    filled = list(values)
+    last = None
+    for i, v in enumerate(filled):
+        if v is None:
+            filled[i] = last
+        else:
+            last = v
+    first = next((v for v in filled if v is not None), None)
+    if first is None:
+        raise ValueError("window has no real samples at all")
+    for i, v in enumerate(filled):
+        if v is None:
+            filled[i] = first
+        else:
+            break
+    return filled  # type: ignore[return-value]
+
+
+def window_to_tensor(window: Window) -> np.ndarray:
+    """(len(ats.model.INPUT_CHANNELS), n_timesteps) float32 array, gap-filled
+    -- the CNN's input format, in ats.model.INPUT_CHANNELS order."""
+    rows = []
+    for source, axis in _CHANNEL_SOURCE:
+        samples = window.acc if source == "acc" else window.gyro
+        rows.append(fill_gaps([sample[axis] for sample in samples]))
+    return np.asarray(rows, dtype=np.float32)

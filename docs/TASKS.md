@@ -184,9 +184,10 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 ### Exit criteria
 
 **Member A**
-- [ ] Window-level macro-F1 on **held-out subjects** beats two baselines computed in this same phase: (a) majority class, (b) logistic regression on per-window mean/std. The bar is *beat both*, with the margin recorded in the commit message — an absolute number invented in advance would be meaningless.
-- [ ] Figure 2 generated with per-class precision/recall/F1 table alongside
-- [ ] Confusions are named in writing, especially sitting vs standing-still and walking vs running (PRD §7.4.2 calls these out specifically)
+- [x] Window-level macro-F1 on **held-out subjects** beats two baselines computed in this same phase: (a) majority class, (b) logistic regression on per-window mean/std. The bar is *beat both*, with the margin recorded in the commit message — an absolute number invented in advance would be meaningless.
+  > **Measured 2026-09-11** on the real 60-subject sample (36 train / 12 val / 12 test, `splits/subject_splits.json`), via `scripts/train_cnn.py` on Kaggle: majority-class macro-F1 **0.0792**, logistic regression (mean/std) macro-F1 **0.1555**, `ActivityCNN` macro-F1 **0.2749**. Beats (a) by **+0.1956** and (b) by **+0.1194**. Full numbers in `models/full/phase2_results.json`, analysis in `docs/results_recognition.md`.
+- [x] Figure 2 generated with per-class precision/recall/F1 table alongside — `results/fig2_confusion_matrix.png` + `results/fig2_per_class_prf.csv`, via `scripts/make_fig2.py`.
+- [x] Confusions are named in writing, especially sitting vs standing-still and walking vs running (PRD §7.4.2 calls these out specifically) — see `docs/results_recognition.md`: walking-vs-running confused in both directions (9.1%/21.6%); sitting-vs-lying is the single largest confusion in this sample (29.5%, larger than sitting-vs-standing-still here); STANDING_STILL (precision 0.029) and RUNNING (precision 0.002, 68.7x rarer than the majority class) both explained as structural failures — signal ambiguity and data scarcity respectively — not training-recipe bugs.
 
 **Member B** *(measured against the **oracle** track)*
 - [x] Tier-1 and tier-2 accuracy **≥ 0.95** — measured **1.000** (n=12) and **1.000** (n=17)
