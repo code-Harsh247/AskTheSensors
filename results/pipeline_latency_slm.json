@@ -1,0 +1,18 @@
+{
+  "target_device": "Laptop CPU: AMD Ryzen 7 4800H (8C/16T), 8GB RAM, Windows 11 64-bit, single-process CPU inference (no GPU)",
+  "measured_on": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD, 8C/16T, 7 GB RAM, Windows 10",
+  "router": "slm",
+  "subject": "subj_real_b",
+  "n_windows": 43519,
+  "timeline_build_ms": {
+    "p50": 139.89570000194362,
+    "p95": 247.25279999984195,
+    "runs": 5
+  },
+  "per_question_ms": {
+    "p50": 11350.946599999588,
+    "p95": 13042.07349999706,
+    "calls": 10
+  },
+  "peak_rss_mb": 2081.2109375
+}

@@ -39,6 +39,21 @@ def test_peak_rss_mb_is_positive():
     assert profile.peak_rss_mb() > 0.0
 
 
+def test_energy_per_query_is_a_hand_worked_value(monkeypatch):
+    """TDP x utilization fraction x time, worked by hand: with 8 logical
+    cores, cpu_pct=400 (4 cores busy) means a 0.5 utilization fraction;
+    45W x 0.5 x 0.010s = 0.225 J."""
+    monkeypatch.setattr(profile.psutil, "cpu_count", lambda logical=True: 8)
+    assert profile.energy_per_query_j(cpu_pct=400.0, latency_ms=10.0) == pytest.approx(0.225)
+
+
+def test_energy_per_query_scales_with_latency(monkeypatch):
+    monkeypatch.setattr(profile.psutil, "cpu_count", lambda logical=True: 8)
+    short = profile.energy_per_query_j(cpu_pct=100.0, latency_ms=1.0)
+    long = profile.energy_per_query_j(cpu_pct=100.0, latency_ms=10.0)
+    assert long == pytest.approx(short * 10)
+
+
 def test_profile_recognition_emits_a_schema_valid_report(tmp_path):
     model = ActivityCNN()
     model_path = tmp_path / "activity_cnn.pt"
@@ -54,6 +69,7 @@ def test_profile_recognition_emits_a_schema_valid_report(tmp_path):
     assert report["latency_p50_ms"] >= 0.0
     assert report["latency_p95_ms"] >= report["latency_p50_ms"]
     assert 0.0 <= report["cpu_pct"]
+    assert report["energy_estimate_j"] >= 0.0
 
 
 def test_main_writes_a_schema_valid_report_to_disk(tmp_path):

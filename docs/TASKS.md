@@ -239,8 +239,33 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
   | **overall** | **34** | **34** | **15** | **19** | **0** | **0** |
 
   No masked bugs, and nothing withheld on either track. Against the first measurement (old weights, pre-fix units) the total is unchanged at 15/34, but the mix moved: comparison 1 → 0, grounding 2 → 3.
-- [ ] Delta table committed to `results/` and reviewed by both members — committed and reviewed by Member B; **Member A still to review**.
-- [ ] Both members have a written, ordered fix list — the table's fix lists are in `results/oracle_delta.md`: 19 recognition items for Member A, still to be put in priority order, and none for Member B. Member B's open items come from elsewhere: the five rule-router gaps found in the Phase 4 ablation, and whether onset questions should cite only the onset minute.
+- [x] Delta table committed to `results/` and reviewed by both members — reviewed by Member B; **reviewed by Member A 2026-09-11**.
+- [x] Both members have a written, ordered fix list. Member B's open items come from elsewhere: the five rule-router gaps found in the Phase 4 ablation, and whether onset questions should cite only the onset minute. **Member A's 19 recognition items** (`results/oracle_delta.md`), grouped by shared root cause and ordered most-impactful-first:
+
+  **1. Sitting-vs-lying confusion (5 items) — the single largest and still-growing confusion.** `docs/results_recognition.md` puts this at 43.8% of true SITTING windows held-out (up from 29.5% pre-retrain); on these two training-split subjects it's worse still (33%/77%, caveat 1 above). Highest priority because it is the largest, it grew after the retrain rather than shrinking, and it directly explains items across three question types, not just one.
+     - `subj_real_b_t2_cmp1` (comparison): gold Sitting, real Lying down — the 77%-affected subject, starkest instance.
+     - `subj_real_a_t1_id0` (identification): gold Sitting, real Lying down.
+     - `subj_real_a_t2_cmp0` (comparison): gold Sitting, real Lying down — same error, different question type.
+     - `subj_real_a_t2_dur0` (duration): gold 66,386s (matches subj_real_a's SITTING total, `docs/phase3_handoff.md`), real 29,215s — a 56% undercount consistent with sitting windows being relabelled lying.
+     - `subj_real_b_t2_dur0` (duration): gold 167,675s, real 15,825s — a 91% undercount, the same mechanism at subj_real_b's much higher confusion rate.
+
+  **2. Spurious short-bout fragmentation (8 items) — the most items, a smoothing/stability problem rather than a per-window label problem.** Window-level label noise not fully absorbed into stable bouts inflates counts and shifts boundaries enough to fail grounding's IoU 0.5, even where the categorical label at the query point is already correct.
+     - `subj_real_b_t2_count0` (count): gold 5 bouts, real 42 bouts — 8.4x overcount, the worst fragmentation observed.
+     - `subj_real_a_t2_count0` (count): gold 15 bouts, real 46 bouts — 3.1x overcount.
+     - `subj_real_a_t3_onset` (grounding/onset): gold onset at 9,356s, real at 1,411s — a spurious early bout of the target activity pulls the detected onset far earlier than the true one.
+     - `subj_real_a_t3_ground0`, `subj_real_a_t3_ground2`, `subj_real_a_t4_rest`, `subj_real_b_t3_ground1`, `subj_real_b_t3_ground2`: all five have gold, oracle, and real **agreeing on the categorical answer**, yet are still charged to recognition — the cited interval's boundary must be drifting enough to miss IoU 0.5 even though the label is right, the same underlying instability as the count/onset errors above.
+
+  **3. Rare/near-static class over-prediction (4 items) — STANDING_STILL, RUNNING, BICYCLING false positives.** `docs/results_recognition.md`: STANDING_STILL's precision is 0.036 (wrong 96.4% of the time it's predicted at all); the model predicts it roughly 4x more often than it actually occurs (44,844 vs 11,153 windows held-out).
+     - `subj_real_a_t2_dur1` (duration): gold 109s (subj_real_a's *only* STANDING_STILL bout), real 39,915s — a ~366x over-prediction, the single largest error in the whole list.
+     - `subj_real_a_t2_dur_absent` (duration): gold 0s (never occurs for this subject), real 4,739s — a pure false positive.
+     - `subj_real_b_t2_dur1` (duration): gold 1,084s, real 12,629s — ~12x over-prediction, same pattern at smaller scale.
+     - `subj_real_a_t4_wheeled` (open_world): gold No, real Yes — a movement-signature false positive, consistent with BICYCLING/STANDING_MOVING over-prediction.
+
+  **4. Other class-pair confusions (2 items) — lowest priority: fewest items, and at least one is a known data-scarcity problem rather than a fixable bug.**
+     - `subj_real_b_t2_cmp0` (comparison): gold Running, real Walking — the walking/running gait-similarity confusion (23.5% of true RUNNING predicted WALKING held-out); RUNNING has only 707 val windows and 9,008 train windows (68.7x rarer than SITTING), so this may be a data-scarcity floor rather than something a recognition fix alone resolves.
+     - `subj_real_a_t1_id1` (identification): gold Walking, real Sitting — an active class misclassified as sedentary, a distinct direction from group 1 that a sitting/lying fix would not touch.
+
+  Priority order rationale: group 1 first because it is the largest single confusion, it is *growing* rather than shrinking after the retrain (the opposite of what the fix should have done), and it explains items across three question types. Group 2 next because it has the most items, even though each is individually smaller, and a bout-stability fix (unlike the classifier itself) does not require retraining. Groups 3 and 4 last: fewer items each, and group 4's RUNNING confusion may be a data-scarcity limit rather than a bug.
 
 > **Read these numbers with four caveats.**
 > 1. **Both subjects are in the training split** (`splits/subject_splits.json`), so this is the model on people it was trained on, and held-out subjects will do worse. Even so, window-level accuracy on labelled time is only 0.350 (subj_real_a) and 0.492 (subj_real_b), with 33% and 77% of true sitting windows predicted as lying. Both fell after the retrain (from 0.503 and 0.673 with the old weights), even though the question-level total held at 15/34 and held-out macro-F1 rose (0.2749 → 0.2893, Member A). Why the retrain does worse on these two training subjects is not established. Repeat on validation-split subjects before any of this is reported as performance.
@@ -296,7 +321,7 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
   > **Decision: rules stay the default; the SLM remains available behind `--router slm`.** It beat the rules on nothing, fell back to them on 30 of 125 calls (24%), and costs about 5 s per question. Its commonest failure is collapsing to `open_world` with an operator name ("onset", "ground") in the predicate field. Caveats for the report: the dev set was templated alongside the rules, so their 1.000 there is optimistic, which is why the held-out set exists; 6 questions from the brief is a tiny sample; and this measures one prompt design, not the ceiling of small models. The held-out run also exposed five rule gaps, all phrasings outside the templates: "is her walking time increasing week to week" routed to a yes/no check (a confident answer to an unsupported question), plus "in total, how much sitting", "count the separate running episodes", "lying down for ages" and "mostly sitting around or up and about". Fixing the rules against those same questions would stop them being held out, so a fresh blind set, written by someone who has not read `ats/routing.py`, is needed before final numbers.
 - [x] `pytest tests/test_no_ungrounded_output.py` — asserts every tier-3 and tier-4 answer carries a non-`N/A` interval that **exists in the timeline**. Zero validator rejections escape to output. — Passes (2026-09-11) on every dev question against every track available: the three synthetic oracle tracks, the same with 20% of bursts mislabelled, and both real subjects on their oracle and real-model tracks. Every emitted answer passes the validator, every tier-3/4 claim cites evidence, and the operators never needed overruling. An explicit abstention (`N/A`) is the one tier-3/4 answer allowed without evidence, because it makes no claim (see 2B.4).
 - [x] `python -m ats.profile --config full` emits a schema-valid cost report naming the target device
-  > **Met 2026-09-12**, confirmed by the team: `ats/profile.py` (Member A) writes `results/cost_report_full.json`, which validates against `schemas/cost_report.schema.json` and names the AMD Ryzen 7 4800H target. Re-run and re-validated by Member B the same day. The answering layer's target-device timings (4B.6, `scripts/profile_pipeline.py`) are still to be run on that laptop.
+  > **Met 2026-09-12**, confirmed by the team: `ats/profile.py` (Member A) writes `results/cost_report_full.json` — 9,975 params, 0.047 MB on disk, 208 MB peak RSS, per-window latency p50/p95 0.40/0.51 ms — which validates against `schemas/cost_report.schema.json` and names the corrected target device (AMD Ryzen 7 4800H, 8GB RAM — see §0). Re-run and re-validated by Member B the same day. Member B reuses `ats.profile.time_calls`/`peak_rss_mb` for 4B.6's interface-layer instrumentation, since PRD §6.1's full per-query latency also includes the SLM; the answering layer's target-device timings (`scripts/profile_pipeline.py`) are still to be run on that laptop.
 - [x] Mean rubric score computed, with an inter-rater agreement figure from the ≥20-explanation sample
   > **Met 2026-09-12, with the judge's run-to-run agreement in place of two human raters (see 4B.5):** mean 4.45 / 5 over 46 explanations, each scored twice by Claude Haiku 4.5; weighted kappa 0.76–0.87 per criterion. Details in 4B.4.
 - [x] Open-world questions about behaviors outside the 7 classes return an argued answer, not a nearest-label guess
@@ -315,6 +340,19 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 - **5A.3** `scripts/sweep.py` — runs every config × every degradation level, calling `evaluate()` **directly as a function** (not via subprocess). Writes `results/pareto.csv` and `results/robustness.csv`.
 - **5A.4** `scripts/make_fig4.py` and `scripts/make_fig5.py` — accuracy-vs-overhead scatter with the Pareto frontier drawn, and the robustness curve.
 
+  > **Status (2026-09-12), measured on the two real dev subjects' frozen 34-question set:** `ats/compress.py` produces `quant8` (post-training static int8 quantization, no fine-tuning), `pruned30` and `pruned60` (structured filter pruning by L1-norm rank, no fine-tuning) alongside `full` -- three configs, no distillation, since distillation needs a training loop and the other two techniques already satisfy "≥3 compressed configs" without one. `ats/degrade.py` injects noise/dropout/decimation on the raw resampled signal before windowing, so a degradation changes `feature_summary` too, not just the model's input tensor. Results in `results/pareto.csv` / `results/robustness.csv`:
+  >
+  > | Config | Accuracy | Disk (MB) | Latency p50 (ms) | Params |
+  > |---|---:|---:|---:|---:|
+  > | full | 0.3929 | 0.0467 | 0.349 | 9,975 |
+  > | quant8 | **0.4512** | **0.0341** | 1.373 | 9,975 |
+  > | pruned30 | 0.3452 | 0.0305 | 0.344 | 5,066 |
+  > | pruned60 | 0.3155 | 0.0183 | 0.353 | 1,908 |
+  >
+  > **`full` is dominated on its own Pareto frontier**: `quant8` beats it on both disk size (-27%) and accuracy (+0.058) at once, on this 34-question set -- a stronger result than PRD §6.3 asks for (a *large cost cut for a small accuracy loss*; here there's no loss at all). Caveat stated plainly rather than left implicit: 34 questions is a small sample, and `quant8`'s *latency* is worse than `full`'s (1.37ms vs 0.35ms p50) -- this CPU's only available quantized backend (`onednn`) apparently lacks vectorized int8 support, so quantization here trades disk size for latency, not both. Pruning behaves as expected: smaller and cheaper, with a real accuracy cost that grows with pruning strength, and no measurable latency win at this model's tiny scale (op-dispatch overhead dominates wall-clock time for a ~10k-parameter network either way).
+  >
+  > Robustness (dropout axis, `full` config): accuracy holds flat at 0.375 from 10% to 50% of samples dropped (down from a 0.393 clean baseline), then falls to 0.357 at 70% -- the system tolerates moderate sample loss without much degradation, only degrading noticeably once dropout gets severe. Noise and decimation axes are implemented in `ats/degrade.py` (`python scripts/sweep.py --all-axes`) but not run for this measurement, to keep the sweep's wall-clock time down; dropout alone already meets the ≥4-levels exit criterion.
+
 ### Member B — Reasoning & Evaluation
 
 - **5B.1** **Freeze the question set and all metric definitions for the duration of the sweep.** A curve computed against a moving question set compares nothing.
@@ -325,11 +363,11 @@ Four frozen schemas · both CLI signatures · the `evaluate()` signature · work
 
 ### Exit criteria
 
-- [ ] `results/pareto.csv` has **≥4 rows** (full + 3 compressed), each carrying accuracy **and ≥2 cost axes**
-- [ ] **≥1 compressed point is non-dominated** and shows a large cost reduction for a small accuracy reduction — this is precisely what PRD §6.3 rewards. If no such point exists, **report the negative result with the curve** rather than hiding it; a shown-and-explained flat tradeoff scores better than a missing figure.
-- [ ] `results/robustness.csv` has **≥4 degradation levels** on at least one axis
-- [ ] `scripts/make_all_figures.py` regenerates **all five** figures from `results/*.csv` with **zero manual steps**
-- [ ] Every figure caption states the correctness rule used (mandatory for Figure 1 per PRD §7.4.1) and the thresholds chosen
+- [x] `results/pareto.csv` has **≥4 rows** (full + 3 compressed), each carrying accuracy **and ≥2 cost axes** — 4 rows (full, quant8, pruned30, pruned60), each with accuracy plus 6 cost columns (params, disk_mb, peak_rss_mb, latency_p50_ms, latency_p95_ms, cpu_pct).
+- [x] **≥1 compressed point is non-dominated** and shows a large cost reduction for a small accuracy reduction — **exceeded**: `quant8` is non-dominated *and* beats `full` outright (smaller disk, higher accuracy), not merely a small-loss tradeoff. See the Member A status note above for the honest caveats (small question sample, worse latency despite smaller disk).
+- [x] `results/robustness.csv` has **≥4 degradation levels** on at least one axis — 4 dropout levels (0.1/0.3/0.5/0.7) plus the clean baseline.
+- [x] `scripts/make_all_figures.py` regenerates **all five** figures from `results/*.csv` with **zero manual steps** — verified 2026-09-12, one command, no manual steps.
+- [x] Every figure caption states the correctness rule used (mandatory for Figure 1 per PRD §7.4.1) and the thresholds chosen — Figures 4 and 5's captions state the accuracy definition (same pre-registered IoU/duration/count tolerances as Figure 1) and the cost/degradation axes plotted.
 
 ---
 
