@@ -48,6 +48,8 @@ def score_answer(answer: dict[str, Any] | None, gold: dict[str, Any]) -> bool:
         predicted = _predicted_number(answer)
         if expected is None or predicted is None:
             return False
+        if gold.get("question_type") == "count":
+            return metrics.within_tolerance(predicted, expected, abs_tol=metrics.COUNT_ABS_TOL, rel_tol=0.0)
         return metrics.within_tolerance(predicted, expected)
 
     if kind == "temporal":
@@ -143,4 +145,5 @@ def evaluate(pred: dict[str, Any], gold: dict[str, Any]) -> dict[str, Any]:
         "iou_threshold": metrics.HEADLINE_IOU_THRESHOLD,
         "relative_tolerance": metrics.RELATIVE_DURATION_TOL,
         "absolute_tolerance_s": metrics.DURATION_ABS_TOL_S,
+        "count_tolerance": metrics.COUNT_ABS_TOL,
     }

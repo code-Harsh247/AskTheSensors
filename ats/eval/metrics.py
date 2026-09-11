@@ -23,6 +23,10 @@ RELATIVE_DURATION_TOL = 0.10
 # ats/windowing.py:HOP_S) on 2026-09-10, giving 2 x 2.0s = 4.0s here.
 DURATION_ABS_TOL_S: float | None = 4.0
 
+# Counts are scored within one bout either way (PRD 7.3.2: "plus or minus one
+# for a count"); the duration tolerance is in seconds and does not apply.
+COUNT_ABS_TOL = 1.0
+
 
 def _require(values: Sequence, name: str = "input") -> None:
     if len(values) == 0:

@@ -62,6 +62,7 @@
       "n": 12
     }
   },
+  "count_tolerance": 1.0,
   "grounded_accuracy": 1.0,
   "iou_threshold": 0.5,
   "label_noise": 0.1,
