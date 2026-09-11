@@ -1,0 +1,3 @@
+**Figure 5: Accuracy vs. signal degradation, `full` config.** Accuracy is `ats.eval.evaluate`'s overall macro accuracy over the frozen `data/questions_dev_v2` question set -- the same pre-registered rules as Figures 1 and 4 (IoU >= 0.5 for grounding, max(4s, 10%) for duration, +/-1 bout for count). Degradation is applied to the raw resampled signal before windowing (`ats/degrade.py`), so it changes both the model's input and every `feature_summary` value an explanation would cite, not just the model's tensor. Axes plotted: **dropout** (fraction of samples dropped). The "none" point (no degradation) anchors every curve at its clean baseline.
+
+Produced by `scripts/make_fig5.py`; numbers in `results/fig5_robustness.csv`.

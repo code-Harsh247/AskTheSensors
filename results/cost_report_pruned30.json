@@ -1,0 +1,10 @@
+{
+  "params": 5066,
+  "disk_mb": 0.030501365661621094,
+  "peak_rss_mb": 207.58203125,
+  "latency_p50_ms": 0.34750000122585334,
+  "latency_p95_ms": 0.492600000143284,
+  "cpu_pct": 714.8,
+  "config_id": "pruned30",
+  "target_device": "Laptop CPU: AMD Ryzen 7 4800H (8C/16T), 8GB RAM, Windows 11 64-bit, single-process CPU inference (no GPU)"
+}
