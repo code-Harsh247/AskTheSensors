@@ -53,6 +53,30 @@ TARGET_DEVICE = (
 N_TIMESTEPS = int(round(WINDOW_LENGTH_S * TARGET_HZ)) + 1
 DEFAULT_N_QUERIES = 200
 
+# AMD's published nominal TDP for the Ryzen 7 4800H (the frozen target
+# device, see TARGET_DEVICE above): 45 W. This is a documented spec value,
+# not a wattmeter reading on this specific unit -- `energy_per_query_j`
+# below is therefore an *estimate* (the schema field is literally named
+# energy_estimate_j; PRD Sec 6.1 marks it "where feasible"), not a directly
+# measured joule count. No power-measurement hardware/API was available on
+# this laptop, so this is the documented, order-of-magnitude approach:
+# average power draw = TDP x utilization fraction, energy = power x time.
+CPU_TDP_W = 45.0
+
+
+def energy_per_query_j(cpu_pct: float, latency_ms: float) -> float:
+    """cpu_pct is psutil's Process.cpu_percent() convention: 100% per fully
+    busy logical core, so it can exceed 100 on a multi-core box. Dividing
+    by the logical core count gives the fraction of the whole chip in use,
+    which is what a TDP-based estimate needs -- this assumes power scales
+    linearly with the fraction of cores utilized, a simplification real
+    CPUs don't strictly follow (SMT sharing execution units, frequency
+    scaling, idle-core power are all non-linear), so treat this as an
+    order-of-magnitude estimate, not a precise figure."""
+    logical_cores = psutil.cpu_count(logical=True) or 1
+    utilization_fraction = (cpu_pct / 100.0) / logical_cores
+    return CPU_TDP_W * utilization_fraction * (latency_ms / 1000.0)
+
 
 def time_calls(fn: Callable[[], None], n: int) -> tuple[float, float]:
     """Call `fn` n times and return (p50_ms, p95_ms) wall-clock latency per
@@ -120,6 +144,7 @@ def profile_recognition(model_path: Path, n_queries: int) -> dict:
         "latency_p50_ms": p50_ms,
         "latency_p95_ms": p95_ms,
         "cpu_pct": cpu_pct,
+        "energy_estimate_j": energy_per_query_j(cpu_pct, p50_ms),
     }
 
 

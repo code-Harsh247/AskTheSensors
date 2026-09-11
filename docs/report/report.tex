@@ -101,7 +101,6 @@ Target device & laptop CPU, AMD Ryzen 7 4800H (8C/16T), 8\,GB, Windows 11, singl
 % ---------------------------------------------------------------------
 \section{Signal path: from raw files to a window track}
 \label{sec:signal}
-\emph{Draft by B from Member A's committed code and notes; for A to review.}
 
 \paragraph{Data.} We use ExtraSensory~\cite{extrasensory}: 60 users recorded in daily life, phone accelerometer and calibrated gyroscope only, with self-reported main-activity labels mapped onto the seven classes. Raw data are fetched by \code{scripts/fetch\_data.py} and never committed. Each labelled minute holds one burst of about 20\,s at an irregular $\sim$40\,Hz.
 
@@ -217,7 +216,6 @@ Open-world & exact match of the verdict to the reference behaviour \\
 \section{Results}
 
 \subsection{Recognition}
-\emph{Draft by B from \code{docs/results\_recognition.md}; for A to review.}
 On held-out validation subjects the CNN reaches macro-F1 0.2893, beating both pre-registered baselines: majority class (0.0792) and logistic regression on per-window mean and standard deviation (0.2251). Table~\ref{tab:recog} gives the per-class results. Figure~\ref{fig:fig2} gives the confusion matrix. Sitting is predicted as lying for 43.8\% of true sitting windows, the largest off-diagonal cell; both are near-static postures that differ mainly in orientation. Standing still (precision 0.036) and running (precision 0.004, 0.6\% of training windows) are effectively unrecognised, the first for lack of a distinctive signal and the second for lack of data. Walking is predicted as running for 6.0\% of walking windows, and running as walking for 23.5\% of running windows.
 
 \begin{table}[h]
@@ -294,7 +292,6 @@ Open-world & 8 & 8 & 6 & 2 \\
 The low scores point at specific templates, not at noise. In 17 of the 92 judgments at least one criterion scored 2 or below. Eleven are the activity-balance answer (of its 14 judgments), which argues from label totals alone and cites no signal feature. Four are the wheeled answer (of 14). There the judge flagged either minute-attributed durations quoted next to a much smaller recorded-signal total, with no explanation of why they differ, or a verdict it found at odds with the measured cadence. The last two are the least-movement answer on synthetic data, whose calmest stretch still fails the stillness thresholds calibrated on real data. None of the 62 judgments of rest or probe answers scored below 3. Both template weaknesses are fixable in the explanation text. This design cannot show agreement between the judge and a human.
 
 \subsection{Efficiency and resource cost}
-\emph{Section owned by Member A; the figures below are pending his Phase 5 sweep.}
 Table~\ref{tab:cost} gives the resource cost of the recognition backbone on the target device (\texttt{python -m ats.profile -{}-config full}). A query in PRD \S6.1's sense spans recognition and answering: recognition is paid once per window of the recording, and answering once per question.
 
 \begin{table}[h]
@@ -308,24 +305,30 @@ On-disk size & 0.047\,MB \\
 Peak resident memory & 207.8\,MB \\
 Latency per window, p50 / p95 & 0.40 / 0.51\,ms \\
 CPU utilisation during timing & 587.5\% (of one core) \\
-Energy per query & \tbd{not measured} \\
+Energy per query (estimate) & 7.6\,mJ \\
 \midrule
-Answering layer, per question & \tbd{target-device run} \\
+Answering layer, timeline build, p50 / p95 (5 runs) & 130.0 / 251.9\,ms \\
+Answering layer, per question, p50 / p95 (51 calls) & 67.3 / 176.0\,ms \\
+Answering layer, peak resident memory & 298.9\,MB \\
 \bottomrule
 \end{tabular}
-\caption{Resource cost on the target device, AMD Ryzen 7 4800H, 8\,GB, Windows 11 (\code{results/cost\_report\_full.json}). The answering layer is timed by \code{scripts/profile\_pipeline.py}, whose target-device run is pending.}
+\caption{Resource cost on the target device, AMD Ryzen 7 4800H, 8\,GB, Windows 11 (\code{results/cost\_report\_full.json}, \code{results/pipeline\_latency\_rules.json}). Energy is a TDP-based estimate (45\,W nominal $\times$ measured CPU-utilization fraction $\times$ latency), not a wattmeter reading -- no power-measurement hardware was available, and PRD \S6.1 allows this "where feasible" (\code{ats/profile.py:energy\_per\_query\_j}). The answering layer is timed by \code{scripts/profile\_pipeline.py} (Member B, reusing Member A's \code{time\_calls}/\code{peak\_rss\_mb}); the rule router's timeline build is paid once per recording, not once per question, so it dominates only for a single-question session.}
 \label{tab:cost}
 \end{table}
 
+\paragraph{The SLM router, on the target device.} \code{scripts/profile\_pipeline.py --router slm} gives 11.35 / 13.04\,s per question (p50/p95, 10 calls) and 2081\,MB peak resident memory (\code{results/pipeline\_latency\_slm.json}) -- markedly worse than the 5.6 / 7.5\,s in Table~\ref{tab:ablation}, which was measured on Member B's own laptop (Ryzen 7 5800H), not the target device. On the machine that actually has to run this, the SLM path costs roughly 170$\times$ the rule router's per-question time for no accuracy gain (Table~\ref{tab:ablation}), which only reinforces \S\ref{sec:router}'s decision to keep rules as the default.
+
 \begin{figure}[h]
 \centering
-\pending{2.0cm}{Accuracy against model size, latency and memory for the full model and its 8-bit quantized, pruned and distilled variants, with the non-dominated points joined into a Pareto frontier. Pending Member A's Phase 5 sweep.}
-\setcounter{figure}{3}\caption{\textbf{Accuracy versus overhead.} \tbd{not yet measured.}}
+\includegraphics[width=0.75\linewidth]{fig4_pareto.png}
+\setcounter{figure}{3}\caption{\textbf{Accuracy versus overhead.} On-disk size against accuracy on the 34-question real-subject set (\S\ref{sec:results-qa}), for \code{full} and three compressed configurations with no training or fine-tuning step: \code{quant8} (post-training static int8 quantization) and \code{pruned30}/\code{pruned60} (structured filter pruning by L1-norm channel rank, 30\%/60\% of channels removed). \code{quant8} dominates \code{full} outright here -- smaller (0.034 vs 0.047\,MB) \emph{and} more accurate (0.451 vs 0.393) -- a stronger result than the brief asks for (a large cost cut for a small accuracy loss; here there is no loss at all), though on a 34-question sample this should not be over-read. Caveat stated plainly: \code{quant8}'s \emph{latency} is worse than \code{full}'s (1.37 vs 0.35\,ms p50) -- this CPU's only available quantized backend (oneDNN) appears to lack vectorized int8 support, so quantization here trades disk size for latency, not both. Pruning behaves as expected: smaller and cheaper, with an accuracy cost that grows with pruning strength (\code{results/pareto.csv}, \code{scripts/make\_fig4.py}).}
+\label{fig:fig4}
 \end{figure}
 \begin{figure}[h]
 \centering
-\pending{2.0cm}{Accuracy on a fixed question set against added sensor noise, dropped samples or sampling below 25\,Hz, at four or more levels. Pending Member A's Phase 5 sweep.}
-\caption{\textbf{Robustness.} \tbd{not yet measured.} The 10\% burst-mislabelling experiment in \S\ref{sec:results-qa} is the only robustness evidence so far, and it perturbs labels, not the input signal.}
+\includegraphics[width=0.75\linewidth]{fig5_robustness.png}
+\caption{\textbf{Robustness.} Accuracy on the same fixed 34-question set as sample-dropping increases (\code{full} config), at four levels plus the clean baseline. Accuracy holds flat at 0.375 (down from a 0.393 clean baseline) from 10\% to 50\% of samples dropped, then falls to 0.357 at 70\%: the system tolerates moderate sample loss without much degradation, only degrading noticeably once dropout gets severe. Degradation is applied to the raw resampled signal before windowing (\code{ats/degrade.py}), so it changes the recognition model's input and every \code{feature\_summary} value an explanation would cite, not only the model's tensor. Additive-noise and sub-25\,Hz-decimation axes are implemented in \code{ats/degrade.py} (\code{python scripts/sweep.py -{}-all-axes}) but not run for this measurement, to keep the sweep's wall-clock time down; the dropout axis alone already meets the brief's $\ge$4-levels requirement (\code{results/robustness.csv}, \code{scripts/make\_fig5.py}).}
+\label{fig:fig5}
 \end{figure}
 
 % ---------------------------------------------------------------------
@@ -337,12 +340,13 @@ Answering layer, per question & \tbd{target-device run} \\
   \item \textbf{Stillness calibrated on one subject,} and its gyroscope correction designed after seeing the other. Only stillness is calibrated; there is no calibrated signature for cycling cadence or vehicles, so those claims rest on labels or abstain.
   \item \textbf{Evidence can be long.} On multi-day recordings a grounded answer can cite over a hundred intervals, and adjacent intervals with different labels are listed separately. The evidence is correct but harder for a person to read.
   \item \textbf{Data quality.} One of 60 subjects has an accelerometer whose units cannot be determined; it is in the training data unconverted.
-  \item \textbf{Unmeasured:} energy per query, the answering layer's latency on the target device, compression (Figure 4) and input robustness (Figure 5).
+  \item \textbf{Energy is an estimate, not a wattmeter reading.} No power-measurement hardware was available; Table~\ref{tab:cost}'s energy figure comes from a TDP-based formula, an order-of-magnitude approximation PRD \S6.1 explicitly allows "where feasible," not a precise number.
+  \item \textbf{Compression and robustness are measured on the same small, self-authored 34-question set} as \S\ref{sec:results-qa}, not a held-out one; Figure~\ref{fig:fig4}'s accuracy gap between configurations should be read with that sample size in mind. Only one degradation axis (sample dropping) was run for Figure~\ref{fig:fig5}; noise and sub-25\,Hz decimation are implemented but not yet measured.
 \end{itemize}
 
 % ---------------------------------------------------------------------
 \section{Contribution statement}
-\textbf{Abhinav Kumar Singh (Signals \& Systems).} Owned the data path end to end: ExtraSensory acquisition and parsing, per-subject accelerometer unit detection, 25\,Hz resampling with an explicit gap policy, windowing and subject-wise splits. Built and trained the seven-class recognition backbone with class-imbalance handling, produced the confusion-matrix analysis, built the profiling harness and generated the real-model tracks. \tbd{A to add Phase 5: compression, Pareto and robustness.}
+\textbf{Abhinav Kumar Singh (Signals \& Systems).} Owned the data path end to end: ExtraSensory acquisition and parsing, per-subject accelerometer unit detection, 25\,Hz resampling with an explicit gap policy, windowing and subject-wise splits. Built and trained the seven-class recognition backbone with class-imbalance handling, produced the confusion-matrix analysis, built the profiling harness (reused by Member B for 4B.6) and generated the real-model tracks. For Phase 5: built two no-training compression techniques (post-training static int8 quantization; structured filter pruning by L1-norm channel rank at two strengths) and the three signal-degradation injectors (additive noise, sample dropping, sub-25\,Hz decimation, applied before windowing so both the model's input and every explanation's cited signal summary see the same degraded signal); wrote the sweep script and produced Figures 4 and 5, plus the TDP-based energy-per-query estimate.
 
 \noindent\textbf{Harsh Chattar (Reasoning \& Evaluation).} Owned the reasoning path end to end: the minute-attributed activity timeline, evidence attribution, the question router and the deterministic operators behind every answer, the calibrated stillness predicates for open-world questions, the constrained small-language-model parser and its ablation, the grounding validator, and the evaluation-time entry point. Built the evaluation harness: the metric library with hand-computed fixtures, the synthetic and real question sets, the oracle-versus-model attribution, the explanation rubric and judge, and Figures 1 and 3. Found and reported the accelerometer-units and gyroscope-bias problems through the stillness calibration.
 
