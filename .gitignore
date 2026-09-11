@@ -2,6 +2,7 @@
 # authored artifacts, not dataset content, so they are explicitly kept.
 data/*
 !data/questions_dev/
+!data/questions_dev_v2/
 
 # Trained model artifacts
 models/
