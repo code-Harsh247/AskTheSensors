@@ -117,6 +117,29 @@ def test_activity_change_between_minutes():
     assert spans(timeline) == [("SITTING", 0.0, 60.0), ("WALKING", 60.0, 120.0)]
 
 
+def test_timing_drift_between_minutes_is_not_a_gap():
+    """Real recordings are nominally a minute apart but often 61-70 s; the
+    unrecorded sliver cannot hide a missing minute, so it is bridged."""
+    timeline = build_timeline(minutes([(0, "WALKING"), (61, "WALKING"), (130, "WALKING")]))
+    assert spans(timeline) == [("WALKING", 0.0, 190.0)]
+    assert timeline.gaps == ()
+
+
+def test_bridging_stops_at_a_whole_missing_minute():
+    # 119 s after the previous start leaves 59 s unclaimed: bridged.
+    bridged = build_timeline(minutes([(0, "SITTING"), (119, "SITTING")]))
+    assert spans(bridged) == [("SITTING", 0.0, 179.0)]
+    # 120 s leaves a full minute unrecorded: a real gap.
+    gapped = build_timeline(minutes([(0, "SITTING"), (120, "SITTING")]))
+    assert spans(gapped) == [("SITTING", 0.0, 60.0), ("SITTING", 120.0, 180.0)]
+    assert gapped.gaps == ((60.0, 120.0),)
+
+
+def test_drift_before_a_new_activity_belongs_to_the_earlier_minute():
+    timeline = build_timeline(minutes([(0, "SITTING"), (75, "WALKING")]))
+    assert spans(timeline) == [("SITTING", 0.0, 75.0), ("WALKING", 75.0, 135.0)]
+
+
 def test_attribution_is_clipped_where_the_next_burst_starts_early():
     """Real example timestamps are not always exactly 60 s apart."""
     timeline = build_timeline(minutes([(0, "SITTING"), (49, "WALKING")]))

@@ -10,7 +10,10 @@ and its labels are per minute, so each burst stands for its whole minute: a
 contiguous run of windows claims `attribution_period_s` from its first window
 (clipped where the next run starts), consecutive same-activity minutes merge
 into one bout, and a missing minute stays a real gap. Decided by the team on
-2026-09-11 (docs/TASKS.md §0).
+2026-09-11 (docs/TASKS.md §0). Real recordings drift seconds off the
+one-minute cadence, so an unrecorded stretch shorter than one period is
+bridged: it cannot hide a missing minute, and treating it as a gap split
+continuous activity into hundreds of bouts on the first real subjects.
 
 For the same reason a burst takes one label: the class with the largest
 summed probability across its windows. A label change inside a minute cannot
@@ -226,6 +229,8 @@ def build_timeline(
         if i + 1 < len(chunks):
             next_start = chunks[i + 1][0]["t_start"]
             end = min(end, next_start)
+            if attribution_period_s is not None and next_start - end < attribution_period_s:
+                end = next_start
             if next_start - end > _EPS:
                 gaps.append((round(end, 3), round(next_start, 3)))
 
