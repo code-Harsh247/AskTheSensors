@@ -7,16 +7,25 @@ sweep points stay fast and don't depend on writing/reading files in between.
 The question set and its scoring rules are frozen for the duration of this
 sweep (docs/TASKS.md task 5B.1, Member B): every point must be comparable.
 
-Requires `python scripts/fetch_data.py` (raw archives) and the compressed
-configs already built (`python -m ats.compress --config quant8|pruned30|pruned60`).
+Cost columns come from each config's standalone cost report
+(`python -m ats.profile --config <config>`, results/cost_report_<config>.json),
+not from timing inside this process: with the whole dataset loaded, a short
+in-sweep timing run inflated latency (quant8 read 1.37 ms here against 0.35 ms
+standalone) and its peak memory was the sweep process's, not the model's.
+
+Requires `python scripts/fetch_data.py` (raw archives), the compressed
+configs already built (`python -m ats.compress --config quant8|pruned30|pruned60`),
+and a cost report for each config.
 
 Usage: python scripts/sweep.py [--data-dir data/raw] [--questions-dir data/questions_dev_v2]
+       python scripts/sweep.py --refresh-costs   # re-read cost columns only; no raw data needed
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -27,7 +36,6 @@ from ats.answer import answer_all  # noqa: E402
 from ats.degrade import degrade_global_samples  # noqa: E402
 from ats.eval import evaluate  # noqa: E402
 from ats.ingest import load_subject  # noqa: E402
-from ats.profile import profile_recognition  # noqa: E402
 from ats.recognize import build_track_from_globalized, load_model  # noqa: E402
 from ats.resample import GlobalSamples, globalize_subject  # noqa: E402
 from ats.serialize import read_question_set  # noqa: E402
@@ -36,10 +44,13 @@ from scripts.make_real_dev_questions import UUIDS  # noqa: E402
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "raw"
 DEFAULT_QUESTIONS_DIR = REPO_ROOT / "data" / "questions_dev_v2"
 MODELS_DIR = REPO_ROOT / "models"
-PARETO_OUT = REPO_ROOT / "results" / "pareto.csv"
-ROBUSTNESS_OUT = REPO_ROOT / "results" / "robustness.csv"
+RESULTS_DIR = REPO_ROOT / "results"
+PARETO_OUT = RESULTS_DIR / "pareto.csv"
+ROBUSTNESS_OUT = RESULTS_DIR / "robustness.csv"
 
 CONFIGS = ("full", "quant8", "pruned30", "pruned60")
+# The cost columns of results/pareto.csv, as named in the cost reports.
+COST_KEYS = ("params", "disk_mb", "peak_rss_mb", "latency_p50_ms", "latency_p95_ms", "cpu_pct")
 
 # One robustness point per (kind, level); "none" is the shared baseline row
 # (the same clean windows the "full" pareto point already used). PRD Sec
@@ -55,6 +66,26 @@ EXTRA_ROBUSTNESS_AXES: dict[str, list[float]] = {
     "noise": [20.0, 10.0, 5.0, 0.0],  # target SNR, dB (lower = noisier)
     "decimate": [2, 4, 8, 16],  # keep-every-Nth-sample factor
 }
+
+
+def costs_from_report(config: str, results_dir: Path = RESULTS_DIR) -> dict:
+    """A config's cost columns, from its standalone cost report."""
+    path = results_dir / f"cost_report_{config}.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} missing: run `python -m ats.profile --config {config}` first")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    return {key: report[key] for key in COST_KEYS}
+
+
+def refresh_costs(pareto_path: Path = PARETO_OUT, results_dir: Path = RESULTS_DIR) -> list[dict]:
+    """The existing pareto rows with their measured accuracy kept and every
+    cost column re-read from the cost reports. Needs no raw data."""
+    with pareto_path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    return [
+        {"config_id": row["config_id"], "accuracy": float(row["accuracy"]), **costs_from_report(row["config_id"], results_dir)}
+        for row in rows
+    ]
 
 
 def _load_globalized(data_dir: Path) -> dict[str, GlobalSamples]:
@@ -91,7 +122,7 @@ def run_pareto(globalized: dict[str, GlobalSamples], questions_dir: Path) -> lis
             continue
         model = load_model(model_path)
         accuracy = _accuracy_for(globalized, model, config, questions_dir)
-        cost = profile_recognition(model_path, n_queries=50)
+        cost = costs_from_report(config)
         rows.append({"config_id": config, "accuracy": accuracy, **cost})
         print(f"[pareto] {config}: accuracy={accuracy:.4f} disk_mb={cost['disk_mb']:.4f} latency_p50_ms={cost['latency_p50_ms']:.3f}")
     return rows
@@ -137,7 +168,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--all-axes", action="store_true", help="Also sweep noise and decimation, not just dropout.")
     parser.add_argument("--skip-pareto", action="store_true")
     parser.add_argument("--skip-robustness", action="store_true")
+    parser.add_argument(
+        "--refresh-costs",
+        action="store_true",
+        help="Only re-read results/pareto.csv's cost columns from the cost reports, keeping its accuracies.",
+    )
     args = parser.parse_args(argv)
+
+    if args.refresh_costs:
+        _write_csv(refresh_costs(), PARETO_OUT)
+        return
 
     globalized = _load_globalized(Path(args.data_dir))
 
