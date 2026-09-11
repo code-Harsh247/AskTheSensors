@@ -25,6 +25,12 @@ from ats.routing import find_activities, find_time, route
         ("What was the user doing at 340 seconds?", "identify", (), 340.0, None),
         # The scenario's own phrasing (PRD §1.1).
         ("Was she doing anything strenuous?", "open_world", (), None, "strenuous"),
+        # Behaviours outside the seven classes, argued from the signal.
+        ("Was the user fidgeting?", "open_world", (), None, "restless"),
+        ("Was the user restless while sitting?", "open_world", ("SITTING",), None, "restless"),
+        ("Did the user take a nap?", "open_world", (), None, "sleep"),
+        ("Was the user sleeping?", "open_world", (), None, "sleep"),
+        ("Was the user mostly at rest or mostly active?", "open_world", (), None, "activity_balance"),
         ("How much time did the user spend lying down?", "duration", ("LYING",), None, None),
         # A threshold is carried as a quantity, so the operator can refuse it.
         ("Did the user walk for more than 5 minutes?", "duration", ("WALKING",), 300.0, None),

@@ -30,6 +30,12 @@ dist/
 venv/
 env/
 
+# LaTeX build byproducts (the report's .tex and .pdf are committed)
+docs/report/*.aux
+docs/report/*.log
+docs/report/*.out
+docs/report/*.toc
+
 # Editor/OS cruft
 .vscode/
 .idea/

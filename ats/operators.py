@@ -473,7 +473,68 @@ def _strenuous(call: OperatorCall, timeline: Timeline, windows: Windows) -> Find
     )
 
 
+def _sleep(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding:
+    """Sleep is not one of the seven classes and cannot be observed directly;
+    what the sensors can show is whether the signal is consistent with it: a
+    prolonged stretch of stillness."""
+    found = _sustained_stillness(timeline, windows)
+    if found.answer == "N/A":
+        return found
+    return Finding(
+        found.answer,
+        "Sustained stillness, consistent with sleep" if found.answer == "Likely yes" else found.activity_event,
+        found.cited,
+        found.explanation
+        + " Accelerometer and gyroscope data cannot tell sleep from resting awake, so this says whether the signal "
+        "is consistent with sleep, not whether the user slept.",
+    )
+
+
+def _restless(call: OperatorCall, timeline: Timeline, windows: Windows) -> Finding:
+    """Restlessness or fidgeting: movement in the signal while the posture
+    stays at rest. Judged over every window classified as a resting posture,
+    by the same majority rule as stillness."""
+    resting = [iv for iv in timeline.intervals if iv.activity in SEDENTARY]
+    if not resting:
+        return abstain(
+            "No interval was classified as sitting, lying down or standing in place, so there is no rest in which "
+            "to judge restlessness."
+        )
+    if not gravity_ok(windows):
+        return abstain(
+            f"This recording's median acceleration magnitude is {recording_gravity(windows):.2f} m/s^2, far from "
+            f"gravity ({GRAVITY} m/s^2), so its units look wrong and stillness cannot be judged from the signal."
+        )
+    summaries = summarize_each(windows, _spans(resting))
+    judged = [(iv, s) for iv, s in zip(resting, summaries) if s is not None]
+    n_windows = sum(s.n_windows for _, s in judged)
+    unsettled_share = sum((1.0 - s.still_share) * s.n_windows for _, s in judged) / n_windows
+    unsettled = [iv for iv, s in judged if s.still_share < MAJORITY]
+    share_text = (
+        f"{unsettled_share:.0%} of the {n_windows} windows classified as sitting, lying down or standing in place "
+        f"show a signal that is not still ({_STILL_RULE})"
+    )
+    if unsettled_share < MAJORITY:
+        return Finding(
+            "Likely no",
+            "Restlessness during rest",
+            _spans(resting),
+            f"Only {share_text}; {len(unsettled)} of the {len(resting)} resting interval(s) are mostly unsettled. "
+            "Every resting interval is cited as the evidence examined. " + describe(summarize(windows, _spans(resting))),
+        )
+    return Finding(
+        "Likely yes",
+        "Restlessness during rest",
+        _spans(unsettled),
+        f"{share_text[0].upper()}{share_text[1:]}: movement while the posture stayed at rest, consistent with "
+        f"fidgeting or restlessness. The {len(unsettled)} resting interval(s) that are mostly unsettled are cited. "
+        + describe(summarize(windows, _spans(unsettled))),
+    )
+
+
 _OPEN_WORLD: dict[str, Callable[[OperatorCall, Timeline, Windows], Finding]] = {
+    "restless": _restless,
+    "sleep": _sleep,
     "prolonged": _prolonged,
     "wheeled": _wheeled,
     "activity_balance": _balance,

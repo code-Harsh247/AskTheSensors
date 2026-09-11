@@ -53,6 +53,11 @@ Format per entry: what it is, where it's from, which file(s) use it, and what it
 - **Source:** https://github.com/huggingface/transformers
 - **Used in:** `ats/slm.py` -- loads the pinned Qwen2.5 weights and runs greedy decoding on CPU.
 
+### Claude Haiku 4.5
+- **What:** Anthropic's small large-language model, model `anthropic/claude-haiku-4.5`, reached through OpenRouter's chat-completions API with the rubric's JSON schema enforced as structured output. Chosen over Claude Opus 5 to keep the judging run cheap.
+- **Source:** Anthropic, https://docs.anthropic.com/; accessed via OpenRouter, https://openrouter.ai/
+- **Used in:** `scripts/judge_explanations.py` and `ats/eval/rubric.py`: the LLM judge that scores open-world explanations on PRD §7.3.5's three-criterion, 1-5 rubric (docs/TASKS.md 4B.4). It sees each explanation and the values the system measured, and returns scores only; it is never part of the answering system and never produces an answer. Consistency is reported as agreement between two independent runs. Called with the Python standard library (`urllib`), so no extra dependency.
+
 ---
 
 ## Still to review

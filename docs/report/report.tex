@@ -1,0 +1,359 @@
+% Ask the Sensors -- CS60055 Hackathon Challenge 1 technical report.
+% Build: cd docs/report && pdflatex report.tex && pdflatex report.tex
+% Every number below comes from a committed file under results/ or docs/;
+% anything not yet measured is marked TBD, never estimated.
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.1cm]{geometry}
+\usepackage{amsmath}
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit}
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{../../results/}}
+\setlist{nosep,leftmargin=1.4em}
+\captionsetup{font=small,labelfont=bf}
+\newcommand{\tbd}[1]{\textbf{\textcolor{red!70!black}{TBD: #1}}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\pending}[2]{%
+  \fbox{\parbox[c][#1][c]{0.9\linewidth}{\centering\small\textcolor{red!70!black}{\textbf{Not yet measured.}}\\[2pt] #2}}}
+
+\title{\textbf{Ask the Sensors}\\[2pt]\large Grounded, explainable activity question answering from wearable motion signals}
+\author{Abhinav Kumar Singh (Signals \& Systems) \quad Harsh Chattar (Reasoning \& Evaluation)\\
+\small CS60055 Ubiquitous Computing, IIT Kharagpur --- Hackathon Challenge 1\\
+\small Repository: \url{https://github.com/code-Harsh247/AskTheSensors}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent We build a service that answers plain-language questions about a person's activity from a phone's accelerometer and gyroscope, and returns every answer with the stretch of signal it rests on. A compact 1D-CNN (9,975 parameters) labels 4-second windows of 25\,Hz signal; everything after that is deterministic Python: windows are aggregated into a minute-attributed activity timeline, a rule router maps each question to a typed operator, the operator computes the answer and the evidence behind it, and a validator refuses to emit any answer whose cited intervals or numbers do not check out against the timeline. No language model produces a number, an interval or a verdict. With ground-truth labels the reasoning layer answers all 53 synthetic and all 34 real development questions correctly; with the trained model it answers 15 of 34 on real subjects, and an oracle-versus-model comparison attributes every one of the 19 losses to recognition rather than reasoning. We report what is measured and mark what is not.
+\end{abstract}
+
+% ---------------------------------------------------------------------
+\section{The problem as we frame it}
+The brief's scenario is an older person living alone whose son, and later her physiotherapist, want to ask questions such as ``how long was she walking?'' or ``did she lie down for a long time?'' and trust the answers without video surveillance. A per-window activity classifier only half answers this: it never says for how long, how often, when, or on what basis. In a care setting an unsupported verdict is not actionable, so the brief makes evidence part of the answer and rules out any system that answers by language reasoning alone.
+
+We therefore treat the task as \emph{question answering over a computed timeline}, with grounding enforced by construction rather than hoped for. Three consequences shaped the design:
+\begin{enumerate}
+  \item \textbf{Numbers come from code, never from a model.} Durations, counts, comparisons and timestamps are computed in Python from the activity timeline, so they can be recomputed and checked.
+  \item \textbf{Honest abstention beats confident error.} When the system cannot support an answer it returns a well-formed \code{N/A} that says why. A validator makes this the only way an unsupported answer can leave the system.
+  \item \textbf{Recognition and reasoning must be separable when judging results.} We run every question twice, once on ground-truth labels (an ``oracle'' track) and once on the model's predictions, so each loss can be charged to the layer that caused it.
+\end{enumerate}
+The data make this hard in specific ways (\S\ref{sec:signal}): ExtraSensory records about 20\,s of signal per labelled minute, phones report the accelerometer in different units, labels are self-reported, and 77.8\% of training windows are sitting or lying.
+
+% ---------------------------------------------------------------------
+\section{System design}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, align=center, font=\small, minimum height=1.25cm, text width=2.55cm, fill=#1},
+  box/.default=white, arr/.style={-{Stealth[length=2mm]}, thick}, lab/.style={font=\scriptsize\itshape, align=center}]
+\node[box=blue!8] (pre) {\textbf{Preprocessing}\\ units check, 25\,Hz, gaps, 4\,s/2\,s windows};
+\node[box=blue!8, right=0.55cm of pre] (rec) {\textbf{Recognition}\\ 1D-CNN, 9,975 params, 7 classes};
+\node[box=orange!10, right=1.25cm of rec] (agg) {\textbf{Aggregation}\\ minute-attributed timeline};
+\node[box=orange!10, right=0.55cm of agg] (int) {\textbf{Interface}\\ router $\rightarrow$ operators $\rightarrow$ validator};
+\draw[arr] (pre) -- (rec); \draw[arr] (rec) -- node[above, lab]{window\\track} (agg); \draw[arr] (agg) -- (int);
+\node[lab, above=0.15cm of rec, xshift=-1.5cm] {Signals \& Systems (A)};
+\node[lab, above=0.15cm of agg, xshift=1.5cm] {Reasoning \& Evaluation (B)};
+\node[font=\small, below=0.55cm of int, text width=3.4cm, align=center] (out) {PRD \S5 answer with cited intervals};
+\draw[arr] (int) -- (out);
+\node[font=\small, below=0.55cm of pre, text width=2.8cm, align=center] (inp) {raw recording + question};
+\draw[arr] (inp) -- (pre);
+\node[font=\scriptsize, below=0.6cm of agg, text width=3.2cm, align=center, draw, dashed] (slm) {optional SLM parser (Qwen2.5-0.5B), off by default};
+\draw[arr, dashed] (slm) -- (int);
+\end{tikzpicture}
+\caption*{\textbf{Architecture.} The only artifact crossing the boundary between the two halves is the \emph{window track}: per 4-second window, the class probabilities in a frozen order, the fraction of real (non-imputed) samples, and a small summary of the signal. The optional language-model parser can only choose which operator to run; it never sees the signal and never produces an answer.}
+\end{figure}
+
+The diagram above shows the four layers the brief suggests, split between the two team members at the window track. The track is a JSON schema frozen before either side wrote logic, which let reasoning be built and tested against a ground-truth track (\code{ats/oracle.py}) long before a classifier existed. Table~\ref{tab:frozen} lists the decisions frozen at the start; the thresholds in it were fixed before any result existed so they could not be tuned to flatter a number.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lp{12.4cm}@{}}
+\toprule
+Decision & Value \\
+\midrule
+Time base & seconds from start of recording, 3 decimals \\
+Class order & Lying, Sitting, Standing in place, Standing and moving, Walking, Running, Bicycling \\
+Sampling rate & exactly 25\,Hz \\
+Window / hop & 4.0\,s / 2.0\,s (50\% overlap) \\
+Headline IoU threshold & $\tau = 0.5$ \\
+Duration tolerance & $\max(2\times\text{hop},\,10\%) = \max(4\,\text{s},\,10\%)$ \\
+Count tolerance & $\pm 1$ bout (PRD \S7.3.2) \\
+Target device & laptop CPU, AMD Ryzen 7 4800H (8C/16T), 8\,GB, Windows 11, single process, no GPU \\
+\bottomrule
+\end{tabular}
+\caption{Frozen decisions (\code{docs/TASKS.md} \S0).}
+\label{tab:frozen}
+\end{table}
+
+\paragraph{Why rules, not a language model, route questions.} The brief suggests a small language model for the interface. We built one (\S\ref{sec:router}) but kept a rule router as the default because it won on every measure we took. The model's only permitted output is a JSON operator call checked against a closed schema, so even when enabled it cannot inject a number.
+
+% ---------------------------------------------------------------------
+\section{Signal path: from raw files to a window track}
+\label{sec:signal}
+\emph{Draft by B from Member A's committed code and notes; for A to review.}
+
+\paragraph{Data.} We use ExtraSensory~\cite{extrasensory}: 60 users recorded in daily life, phone accelerometer and calibrated gyroscope only, with self-reported main-activity labels mapped onto the seven classes. Raw data are fetched by \code{scripts/fetch\_data.py} and never committed. Each labelled minute holds one burst of about 20\,s at an irregular $\sim$40\,Hz.
+
+\paragraph{Units.} ExtraSensory's accelerometer files are in $g$ for some phones and already in m/s$^2$ for others. A single fixed conversion left one development subject reading 94.75\,m/s$^2$ at rest, almost ten times gravity. Ingestion now decides the scale per subject from the median raw magnitude ($\approx$1 means $g$, $\approx$9.8 means m/s$^2$) and refuses to guess otherwise. After the fix 59 of 60 subjects have a median magnitude within 8--12\,m/s$^2$; one subject (median 3.16) fits neither unit and is left unconverted and flagged (\code{results/acc\_units\_by\_subject.csv}).
+
+\paragraph{Resampling, gaps and windows.} Every channel is resampled onto an exact 25\,Hz grid. Gaps longer than a fixed limit between real samples are marked missing rather than interpolated, and each window records its \emph{coverage}, the fraction of its samples that are real. Windows are 4\,s long with a 2\,s hop: short enough to fit inside one burst, long enough to span several gait cycles. Accelerometer and gyroscope bursts are anchored on one shared seconds-from-start timeline.
+
+\paragraph{Splits and model.} Splits are by subject (36 train / 12 validation / 12 test), so no person's gait appears on both sides. The recognition backbone is a 1D-CNN over the raw 6-channel window (three convolution layers and global average pooling, 9,975 parameters), chosen over gradient boosting because it can be quantized, pruned and distilled for the edge extra credit. Class imbalance is handled with inverse-frequency loss weights. The model was trained on 1.42 million windows.
+
+% ---------------------------------------------------------------------
+\section{Reasoning path: from a window track to a grounded answer}
+
+\subsection{A timeline that means what the questions mean}
+Per-window labels are not what a question asks about. ``How long was she walking?'' asks about bouts, and ExtraSensory records only about a third of each minute, so summing recorded windows would return roughly a third of reality, and counting bursts would count minutes instead of bouts. \code{ats/aggregate.py} therefore builds \emph{minute-attributed bouts}:
+\begin{itemize}
+  \item each burst stands for its whole labelled minute, and consecutive same-activity minutes merge into one bout; a missing minute stays a real gap;
+  \item within a burst every window takes one pooled label (largest summed probability), so isolated flips cannot create spurious bouts;
+  \item an unrecorded stretch shorter than one minute (clock drift) is bridged, never treated as a gap. On one real subject this took the bout count from 3,151 to 325;
+  \item overlapping windows meet at the midpoint of their overlap, so no second is counted twice.
+\end{itemize}
+Explanations state how much \emph{recorded} signal backs each cited interval, so the attribution is never hidden.
+
+\subsection{Routing and operators}
+\label{sec:router}
+The router maps a question to one typed call, \code{(operator, activities, time, predicate)}, with eight operators: identify, verify, duration, count, compare, onset, ground and open-world. Each operator computes its answer, the intervals it rests on and a templated explanation from the timeline and the window summaries (\code{ats/operators.py}). Negative findings (``running never occurs'') cite every observed interval as the evidence examined, so they are grounded too. Threshold questions (``more than 5 minutes?'') are recognised and refused rather than misread as a point in time.
+
+\paragraph{Rules versus a small language model.} We built a Qwen2.5-0.5B-Instruct parser~\cite{qwen} whose output is validated against a closed JSON schema, falling back to the rules on any failure. Table~\ref{tab:ablation} shows why the rules stay the default. The dev set was templated alongside the rules, so their 1.000 there is optimistic; that is why we also measured routing on held-out questions, six taken from the brief and thirteen written by Member B without consulting the templates. The rules won there too, and ran four orders of magnitude faster. The held-out run exposed five rule gaps, such as ``in total, how much sitting happened?''; we did not patch them against the same questions, which would stop them being held out.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & Rules & SLM (Qwen2.5-0.5B) \\
+\midrule
+Dev routing accuracy ($n=53$) & 1.000 & 0.868 \\
+Dev QA accuracy, macro ($n=53$) & 1.000 & 0.819 \\
+Held-out routing, questions from the brief ($n=6$) & 0.83 & 0.67 \\
+Held-out routing, written by Member B ($n=13$) & 0.69 & 0.46 \\
+Routing latency p50 / p95 & 0.3 / 0.4\,ms & 5.6 / 7.5\,s \\
+\bottomrule
+\end{tabular}
+\caption{Router ablation (\code{results/phase4\_router\_ablation.json}). The SLM fell back to the rules on 30 of 125 calls (24\%). Latency was measured on Member B's laptop (Ryzen 7 5800H), not the target device.}
+\label{tab:ablation}
+\end{table}
+
+\subsection{Open-world answers argued from the signal}
+Tier-4 questions ask about behaviour the classifier was never trained to name, so answers must rest on measured properties, not labels. We calibrated one signal property on data: a window is \emph{still} when its accelerometer-magnitude standard deviation is at most 0.022\,m/s$^2$ and its gyroscope energy is at most 0.005 above the recording's resting level. Both thresholds are the rounded-up 95th percentiles of lying-down windows on one calibration subject. On that subject 95\% of lying and 85\% of sitting windows are judged still; on the second subject 97\% of lying and 0\% of walking, running and bicycling windows are (\code{results/stillness\_calibration.json}).
+
+Two data problems surfaced through this check and are handled explicitly. First, the thresholds are in m/s$^2$, so stillness is only judged on a recording whose median magnitude is 8--12\,m/s$^2$; elsewhere the answer abstains. Second, the second subject's gyroscope carries a constant bias on one axis (about 0.014\,rad/s), which alone kept every window above the threshold. A constant offset $b$ adds about $n b^2$ to a window's energy, so the resting floor is estimated per axis from windows whose accelerometer is quiet and subtracted. This correction was designed after seeing that subject, so it no longer tests the gyroscope half of the rule independently.
+
+On stillness rest the open-world operators build: sustained stillness (``resting for a long time?'', answered whichever resting posture the classifier chose), sleep (the same evidence, with the explanation stating that these sensors cannot tell sleep from lying awake), restlessness (movement while the posture stays at rest), and vetoes that stop ``cycling'' or ``strenuous'' claims resting on a still signal. Behaviours with no calibrated signature, such as driving, stairs or dancing, get an explicit abstention rather than the nearest of the seven labels.
+
+\subsection{The validator: grounding enforced, not hoped for}
+Every answer passes \code{ats/validator.py} before it can be written. It checks that the timestamps text matches the cited intervals, that every cited interval exists in the timeline, that tier-3 and tier-4 answers cite evidence, and that durations and counts recompute from the cited intervals to within $10^{-3}$. An answer that fails is replaced by a validated abstention naming the problem, and the rejection is reported; there is no bypass. \code{tests/test\_no\_ungrounded\_output.py} runs every development question over every available track and asserts that no ungrounded answer escapes. Across all our runs the validator has had nothing to overrule.
+
+Below is real output from the trained model's track on a 46-hour recording (timestamp lists truncated here for space).
+{\small
+\begin{verbatim}
+Query: "Was the user resting for a long time?"
+Answer:              Likely yes
+Activity/Event:      Sustained stillness
+Evidence:
+    Timestamp(s):        5758 to 6548, 7579 to 8249, ... [truncated for the report]
+    Sensor Modality:     Accelerometer, Gyroscope
+    Sensor Channel(s):   All
+Explanation:         The longest stretch of mostly still signal runs 216560-237464 s
+                     (20904 s), at or above the 300 s taken as prolonged; the
+                     classifier called it lying down. Stillness is judged from the
+                     signal (...), so it holds whichever resting posture the
+                     classifier chose. The 29436 windows behind this (68690 s of
+                     recorded signal) show accelerometer magnitude averaging
+                     9.66 m/s^2 ...
+\end{verbatim}}
+
+\paragraph{Evaluation-time entry point.} The command below runs recognition on a raw, unlabelled recording and answers every question; \texttt{-{}-track} answers from a precomputed track instead.
+{\small
+\begin{verbatim}
+python -m ats.answer --recording <data_dir> --subject <id> \
+    --questions <questions.json> --out <answers.txt>
+\end{verbatim}}
+\noindent The trained weights (49\,KB) are committed so this works from a clean checkout.
+
+% ---------------------------------------------------------------------
+\section{Evaluation methodology}
+\paragraph{Question sets.} (i) 53 synthetic questions over three generated subjects with the real burst layout, at least twelve per tier, including deliberate edge cases: an activity that never occurs, a question landing in a data gap, and a tie. (ii) 34 questions over two real subjects, whose gold answers are derived from ground-truth labels by an implementation of the timeline rules independent of \code{ats/aggregate.py}; the script refuses to write unless the two agree exactly, and they do. (iii) The 19 held-out routing questions of Table~\ref{tab:ablation}. (iv) A 16-question open-world probe (\S\ref{sec:results-qa}).
+
+\paragraph{Correctness rules.} No single metric fits categorical, numeric and temporal answers, so each type has its own rule (Table~\ref{tab:rules}). The headline is the macro-average over question types, so plentiful easy sedentary questions cannot dominate it (PRD \S7.3). An answer is \emph{grounded and correct} only if it is correct \emph{and} its cited intervals reach the IoU threshold \emph{and} its modality and channels match.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lp{13.2cm}@{}}
+\toprule
+Question type & Correct when \\
+\midrule
+Identification & exact match of the named activity \\
+Verification & exact match of the yes/no verdict; also precision, recall, F1 and specificity on ``yes'' \\
+Duration & within $\max(4\,\text{s}, 10\%)$ of the true total; MAE also reported \\
+Count & within $\pm1$ bout of the true count; MAE also reported \\
+Comparison & exact match of the activity that took longer, or ``Equal'' within 2\,s \\
+Grounding & cited intervals reach matched mean IoU $\ge 0.5$ with the true intervals \\
+Open-world & exact match of the verdict to the reference behaviour \\
+\bottomrule
+\end{tabular}
+\caption{Correctness rules (\code{ats/eval/metrics.py}, with hand-computed test fixtures).}
+\label{tab:rules}
+\end{table}
+
+\paragraph{Threshold justification.} IoU $\tau=0.5$ is the conventional point at which a cited interval overlaps the truth more than it misses it; we fixed it before seeing results and report the full 0.1--0.9 sweep (Figure~\ref{fig:fig3}) so no single choice hides the shape. The duration floor of 4\,s is two window hops, the finest resolution at which the timeline can place a boundary, and the 10\% relative term keeps long bouts from demanding second-level precision. The count tolerance of $\pm1$ is the brief's own rule. When counts were first found to be scored with the duration tolerance (which accepted a count of 5 anywhere from 1 to 9), the fix made scoring strictly tighter and no measured result changed.
+
+\paragraph{Oracle-versus-model attribution.} \code{scripts/oracle\_delta.py} answers each question on both tracks through identical reasoning. A question right on the oracle but wrong on the model is charged to recognition; wrong on the oracle is routing (if the operator call is wrong) or reasoning; right on the model but wrong on the oracle is listed separately as a masked bug. Comparison is over labelled time only by default, since a prediction in a minute nobody labelled has no truth to be judged against.
+
+% ---------------------------------------------------------------------
+\section{Results}
+
+\subsection{Recognition}
+\emph{Draft by B from \code{docs/results\_recognition.md}; for A to review.}
+On held-out validation subjects the CNN reaches macro-F1 0.2893, beating both pre-registered baselines: majority class (0.0792) and logistic regression on per-window mean and standard deviation (0.2251). Table~\ref{tab:recog} gives the per-class results. Figure~\ref{fig:fig2} gives the confusion matrix. Sitting is predicted as lying for 43.8\% of true sitting windows, the largest off-diagonal cell; both are near-static postures that differ mainly in orientation. Standing still (precision 0.036) and running (precision 0.004, 0.6\% of training windows) are effectively unrecognised, the first for lack of a distinctive signal and the second for lack of data. Walking is predicted as running for 6.0\% of walking windows, and running as walking for 23.5\% of running windows.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Class & Precision & Recall & F1 & Support \\
+\midrule
+Lying & 0.558 & 0.732 & 0.633 & 154,187 \\
+Sitting & 0.524 & 0.202 & 0.292 & 150,717 \\
+Standing in place & 0.036 & 0.144 & 0.057 & 11,153 \\
+Standing and moving & 0.141 & 0.138 & 0.139 & 37,422 \\
+Walking & 0.478 & 0.425 & 0.450 & 30,137 \\
+Running & 0.004 & 0.054 & 0.007 & 707 \\
+Bicycling & 0.350 & 0.615 & 0.446 & 8,362 \\
+\bottomrule
+\end{tabular}
+\caption{Per-class recognition on held-out validation subjects, after the units fix (\code{models/full/phase2\_results.json}, \code{results/fig2\_per\_class\_prf.csv}).}
+\label{tab:recog}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.62\linewidth]{fig2_confusion_matrix.png}
+\setcounter{figure}{1}\caption{\textbf{Activity confusion matrix} of the recognition backbone on held-out validation subjects, rows true and columns predicted, window level. Per-class precision, recall and F1 are in Table~\ref{tab:recog}.}
+\label{fig:fig2}
+\end{figure}
+
+\subsection{Question answering}
+\label{sec:results-qa}
+\paragraph{The reasoning layer in isolation.} On oracle tracks the reasoning layer answers all 53 synthetic questions correctly: accuracy 1.000 on every type and tier, grounded accuracy 1.000 over the 26 questions with cited gold intervals, and verification precision, recall, F1 and specificity all 1.000. To see how it degrades under recognition error, we mislabelled 10\% of whole bursts at random (seed 0). Macro accuracy fell to 0.837 and grounded accuracy to 0.692. Duration was hit hardest (0.56, MAE 46.7\,s), because one wrong minute shifts a total by 60\,s; identification and verification stayed at 1.000 (\code{results/phase2\_dev\_eval\_burst10.json}).
+
+\paragraph{Real subjects, trained model.} Table~\ref{tab:delta} and Figure~\ref{fig:fig1} give the end-to-end result on the two real development subjects. With ground-truth labels the same reasoning answers 34 of 34; with the trained model it answers 15 (macro 39\%). All 19 losses are attributed to recognition, with none to routing or reasoning and no masked bugs; nothing was withheld by the validator on either track. Duration, count and comparison fail completely, because they aggregate the model's per-minute errors over tens of hours: on one subject the model reports 42 bouts of an activity that truly has 5. Verification and open-world answers survive best, since the first needs only one correct occurrence and the second leans on signal properties rather than labels.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Question type & $n$ & Right (oracle) & Right (model) & Lost to recognition \\
+\midrule
+Identification & 4 & 4 & 2 & 2 \\
+Verification & 4 & 4 & 4 & 0 \\
+Duration & 5 & 5 & 0 & 5 \\
+Count & 2 & 2 & 0 & 2 \\
+Comparison & 3 & 3 & 0 & 3 \\
+Grounding & 8 & 8 & 3 & 5 \\
+Open-world & 8 & 8 & 6 & 2 \\
+\midrule
+\textbf{Overall} & \textbf{34} & \textbf{34} & \textbf{15} & \textbf{19} \\
+\bottomrule
+\end{tabular}
+\caption{Oracle-versus-model attribution on two real subjects (\code{results/oracle\_delta.md}); no loss was attributed to routing or reasoning. Scoring every recorded window instead of labelled time only gives identical numbers.}
+\label{tab:delta}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\linewidth]{fig1_accuracy_by_question_type.png}
+\setcounter{figure}{0}\caption{\textbf{Accuracy by question type} on 34 real-subject questions, from oracle labels (blue) and the trained model (orange) through the same reasoning layer. Overall is the macro-average over types. Correctness rules: identification, exact activity; verification, exact yes/no; duration, within $\max(4\,\text{s},10\%)$; count, within one bout; comparison, exact activity that took longer or ``Equal''; grounding, matched IoU $\ge 0.5$; open-world, exact verdict.}
+\label{fig:fig1}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\linewidth]{fig3_accuracy_vs_strictness.png}
+\setcounter{figure}{2}\caption{\textbf{Accuracy versus strictness.} Left: of the 17 answers whose gold cites intervals, the fraction whose cited intervals reach each IoU threshold; at the pre-registered 0.5, oracle labels 100\%, trained model 41\%. Right: of the 5 duration answers, the fraction within each relative tolerance (the 4\,s floor is left out so the curve shows relative error alone); the trained model has none within 10\%. The model's interval acceptance falls steadily, from 71\% at IoU 0.1 to 41\% at 0.5 and 0\% by 0.85: 29\% of its cited evidence misses even at the loosest threshold, and the rest is only partly aligned. Its durations are wild misses, none within 55\% of the truth.}
+\label{fig:fig3}
+\end{figure}
+
+\paragraph{Open-world probe.} Sixteen questions about behaviours outside the seven classes (\path{scripts/probe_open_world.py}) give 6 answers argued from the signal (fidgeting, restless, sleeping, nap, exercising, a long stretch without moving), 9 explicit abstentions for behaviours with no calibrated signature, and 1 read as a named class (``go for a jog'' as running, a synonym). The result is identical on both subjects and on both oracle and model tracks: stillness does not depend on the classifier, so the longest still stretch is the same 20,904\,s whichever labels are used. The probe's questions and rules share an author, so this checks intent rather than generalisation.
+
+\paragraph{Explanation quality.} Following PRD \S7.3.5, Claude Haiku 4.5~\cite{claude} scores every open-world explanation that makes a claim (46; the 36 abstentions have nothing to judge) on the three-criterion, 1--5 rubric, and is shown the values the system measured so it can check the explanation's numbers. It scores each explanation twice, independently, and we report the two runs' agreement (quadratic-weighted $\kappa$) as the consistency figure. Over the 46 explanations the mean score is \textbf{4.45 out of 5}: 4.41 for citing real features, 4.63 for features supporting the conclusion, and 4.29 for plausibility, with no judgment unscored (\code{results/rubric\_summary.json}). The two runs agree exactly on 72--85\% of scores per criterion and within one point on at least 96\%, with quadratic-weighted $\kappa$ of 0.87, 0.76 and 0.81.
+
+The low scores point at specific templates, not at noise. In 17 of the 92 judgments at least one criterion scored 2 or below. Eleven are the activity-balance answer (of its 14 judgments), which argues from label totals alone and cites no signal feature. Four are the wheeled answer (of 14). There the judge flagged either minute-attributed durations quoted next to a much smaller recorded-signal total, with no explanation of why they differ, or a verdict it found at odds with the measured cadence. The last two are the least-movement answer on synthetic data, whose calmest stretch still fails the stillness thresholds calibrated on real data. None of the 62 judgments of rest or probe answers scored below 3. Both template weaknesses are fixable in the explanation text. This design cannot show agreement between the judge and a human.
+
+\subsection{Efficiency and resource cost}
+\emph{Section owned by Member A; the figures below are pending his Phase 5 sweep.}
+Table~\ref{tab:cost} gives the resource cost of the recognition backbone on the target device (\texttt{python -m ats.profile -{}-config full}). A query in PRD \S6.1's sense spans recognition and answering: recognition is paid once per window of the recording, and answering once per question.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Recognition backbone (\code{full}) & \\
+\midrule
+Parameters & 9,975 \\
+On-disk size & 0.047\,MB \\
+Peak resident memory & 207.8\,MB \\
+Latency per window, p50 / p95 & 0.40 / 0.51\,ms \\
+CPU utilisation during timing & 587.5\% (of one core) \\
+Energy per query & \tbd{not measured} \\
+\midrule
+Answering layer, per question & \tbd{target-device run} \\
+\bottomrule
+\end{tabular}
+\caption{Resource cost on the target device, AMD Ryzen 7 4800H, 8\,GB, Windows 11 (\code{results/cost\_report\_full.json}). The answering layer is timed by \code{scripts/profile\_pipeline.py}, whose target-device run is pending.}
+\label{tab:cost}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\pending{2.0cm}{Accuracy against model size, latency and memory for the full model and its 8-bit quantized, pruned and distilled variants, with the non-dominated points joined into a Pareto frontier. Pending Member A's Phase 5 sweep.}
+\setcounter{figure}{3}\caption{\textbf{Accuracy versus overhead.} \tbd{not yet measured.}}
+\end{figure}
+\begin{figure}[h]
+\centering
+\pending{2.0cm}{Accuracy on a fixed question set against added sensor noise, dropped samples or sampling below 25\,Hz, at four or more levels. Pending Member A's Phase 5 sweep.}
+\caption{\textbf{Robustness.} \tbd{not yet measured.} The 10\% burst-mislabelling experiment in \S\ref{sec:results-qa} is the only robustness evidence so far, and it perturbs labels, not the input signal.}
+\end{figure}
+
+% ---------------------------------------------------------------------
+\section{Limitations}
+\begin{itemize}
+  \item \textbf{Recognition limits everything downstream.} A macro-F1 of 0.29 caps end-to-end accuracy at 15 of 34 on real subjects even though the reasoning layer loses nothing. The largest single error is sitting read as lying.
+  \item \textbf{Optimistic real-subject numbers.} Both real development subjects are in the training split. Held-out subjects will do worse, and the real-subject figures should be repeated on validation-split subjects.
+  \item \textbf{Small, self-authored question sets.} 34 real questions over two subjects, and a router tuned against templates it was written alongside. A blind question set, written by someone who has not read the router, is needed before final numbers.
+  \item \textbf{Stillness calibrated on one subject,} and its gyroscope correction designed after seeing the other. Only stillness is calibrated; there is no calibrated signature for cycling cadence or vehicles, so those claims rest on labels or abstain.
+  \item \textbf{Evidence can be long.} On multi-day recordings a grounded answer can cite over a hundred intervals, and adjacent intervals with different labels are listed separately. The evidence is correct but harder for a person to read.
+  \item \textbf{Data quality.} One of 60 subjects has an accelerometer whose units cannot be determined; it is in the training data unconverted.
+  \item \textbf{Unmeasured:} energy per query, the answering layer's latency on the target device, compression (Figure 4) and input robustness (Figure 5).
+\end{itemize}
+
+% ---------------------------------------------------------------------
+\section{Contribution statement}
+\textbf{Abhinav Kumar Singh (Signals \& Systems).} Owned the data path end to end: ExtraSensory acquisition and parsing, per-subject accelerometer unit detection, 25\,Hz resampling with an explicit gap policy, windowing and subject-wise splits. Built and trained the seven-class recognition backbone with class-imbalance handling, produced the confusion-matrix analysis, built the profiling harness and generated the real-model tracks. \tbd{A to add Phase 5: compression, Pareto and robustness.}
+
+\noindent\textbf{Harsh Chattar (Reasoning \& Evaluation).} Owned the reasoning path end to end: the minute-attributed activity timeline, evidence attribution, the question router and the deterministic operators behind every answer, the calibrated stillness predicates for open-world questions, the constrained small-language-model parser and its ablation, the grounding validator, and the evaluation-time entry point. Built the evaluation harness: the metric library with hand-computed fixtures, the synthetic and real question sets, the oracle-versus-model attribution, the explanation rubric and judge, and Figures 1 and 3. Found and reported the accelerometer-units and gyroscope-bias problems through the stillness calibration.
+
+\noindent Both members agree with both statements. \tbd{countersign}
+
+\begin{thebibliography}{9}\small
+\bibitem{extrasensory} Y.~Vaizman, K.~Ellis, G.~Lanckriet. Recognizing detailed human context in-the-wild from smartphones and smartwatches. \emph{IEEE Pervasive Computing}, 2017. \url{http://extrasensory.ucsd.edu/}
+\bibitem{qwen} Qwen Team. Qwen2.5 technical report. arXiv:2412.15115, 2024. Weights \code{Qwen/Qwen2.5-0.5B-Instruct}, revision \code{7ae5576}.
+\bibitem{claude} Anthropic. Claude Haiku 4.5 (\code{anthropic/claude-haiku-4.5}), accessed through OpenRouter, \url{https://openrouter.ai/}.
+\bibitem{torch} A.~Paszke et al. PyTorch: an imperative style, high-performance deep learning library. NeurIPS, 2019.
+\end{thebibliography}
+\noindent\small All software libraries used, and where, are listed in \code{docs/CITATIONS.md}.
+
+\end{document}
