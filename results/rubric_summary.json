@@ -1,0 +1,31 @@
+{
+  "criteria": {
+    "cites_real_features": {
+      "exact_agreement": 0.8478260869565217,
+      "mean": 4.413043478260869,
+      "weighted_kappa": 0.8738574040219378,
+      "within_one": 0.9565217391304348
+    },
+    "conclusion_plausible": {
+      "exact_agreement": 0.717391304347826,
+      "mean": 4.293478260869565,
+      "weighted_kappa": 0.8125268125268125,
+      "within_one": 0.9565217391304348
+    },
+    "features_support_conclusion": {
+      "exact_agreement": 0.8478260869565217,
+      "mean": 4.630434782608695,
+      "weighted_kappa": 0.7589098532494758,
+      "within_one": 0.9782608695652174
+    }
+  },
+  "judge_model": "anthropic/claude-haiku-4.5",
+  "n_abstentions_set_aside": 36,
+  "n_items": 46,
+  "n_judgments_without_score": 0,
+  "n_sampled": 46,
+  "overall_mean": 4.445652173913043,
+  "served_by": [
+    "anthropic/claude-haiku-4.5"
+  ]
+}
