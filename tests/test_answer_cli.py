@@ -79,16 +79,9 @@ def test_the_input_must_be_exactly_one_recording_or_track(extra, tmp_path):
         answer.main(["--questions", "q.json", "--out", str(tmp_path / "a.txt"), *extra])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileNotFoundError,
-    reason="docs/bug.md issue 2: ats.ingest.load_subject requires the labels archive, "
-    "which an evaluation-time recording will not have",
-)
 def test_an_unlabelled_recording_can_be_loaded(tmp_path):
-    """A minimal real-format recording with no labels archive. When Member A's
-    fix lands this passes, strict xfail turns that into a failure, and the
-    marker should be removed in the same change."""
+    """A minimal real-format recording with no labels archive (docs/bug.md
+    issue 2): ats.ingest.load_subject must load it rather than raise."""
     subject = "UNLABELLED-SUBJECT"
     for channel, suffix in (("raw_acc", ".m_raw_acc.dat"), ("proc_gyro", ".m_proc_gyro.dat")):
         folder = tmp_path / "_meta" / channel / subject
