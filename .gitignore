@@ -4,8 +4,12 @@ data/*
 !data/questions_dev/
 !data/questions_dev_v2/
 
-# Trained model artifacts
-models/
+# Trained model artifacts. Exception: models/full/ is committed so the
+# "runnable system" deliverable (PRD §9.4) works from a clean checkout
+# without requiring a retrain -- the weights are tiny (~49KB). Decided
+# jointly, docs/bug.md issue 2's "Also needed" note.
+models/*
+!models/full/
 
 # Bulk/raw results — keep only small summary CSVs under results/
 results/raw/
