@@ -1,0 +1,9 @@
+question_type,n,correctness_rule,Oracle labels,Trained model
+identification,4,exact match of the named activity,1.0000,0.5000
+verification,4,exact match of the yes/no verdict,1.0000,1.0000
+duration,5,"within max(4 s, 10%) of the true total (pre-registered)",1.0000,0.0000
+count,2,within 1 bout of the true count,1.0000,0.0000
+comparison,3,"exact match of the activity that took longer, or 'Equal'",1.0000,0.3333
+grounding,8,cited intervals reach matched IoU >= 0.5 with the true intervals (pre-registered),1.0000,0.2500
+open_world,8,exact match of the verdict to the reference behaviour,1.0000,0.8750
+overall,34,macro-average of the per-type accuracies (PRD 7.3),1.0000,0.4226
