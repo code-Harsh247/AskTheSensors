@@ -157,6 +157,35 @@ def _read_dat_bytes(data: bytes) -> tuple[tuple[float, float, float, float], ...
     return tuple(rows)
 
 
+# ExtraSensory recording bursts are nominally ~20 seconds long. A real
+# device-clock anomaly (observed: one burst's last sample timestamped far
+# ahead of its first, presumably a clock glitch on the phone) can make a
+# burst's *reported* span enormous, which downstream tries to allocate a
+# resampling grid with billions of points for (ats/resample.py) -- an
+# out-of-memory crash, not a graceful failure. A burst whose span exceeds
+# this by a wide margin is almost certainly corrupted timing data, not real
+# motion, and is dropped for that channel -- the same treatment as a
+# dummy/unavailable burst, not silently propagated with a fabricated span.
+MAX_BURST_SPAN_S = 60.0
+
+
+def _sanitize_burst_rows(
+    rows: tuple[tuple[float, float, float, float], ...], subject_id: str, ts: int
+) -> tuple[tuple[float, float, float, float], ...]:
+    if len(rows) < 2:
+        return rows
+    times = [r[0] for r in rows]
+    span = max(times) - min(times)
+    if span < 0 or span > MAX_BURST_SPAN_S:
+        print(
+            f"WARNING: ats.ingest: subject {subject_id} example {ts} has an implausible "
+            f"burst span ({span:.1f}s, expected ~20s) -- likely a device clock glitch; "
+            f"dropping this channel's data for this burst rather than trusting it."
+        )
+        return ()
+    return rows
+
+
 def _iter_bursts(meta_dir: Path, name: str, subject_id: str, suffix: str):
     """Yields (timestamp, raw_bytes) for one channel ('raw_acc' or
     'proc_gyro'), whether the archive arrived as a zip or an
@@ -199,12 +228,12 @@ def load_subject(data_dir: str | Path, subject_id: str) -> Subject:
 
     acc_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
     for ts, data in _iter_bursts(meta_dir, "raw_acc", subject_id, ".m_raw_acc.dat"):
-        raw = _read_dat_bytes(data)
+        raw = _sanitize_burst_rows(_read_dat_bytes(data), subject_id, ts)
         acc_by_ts[ts] = tuple((t, x * G_TO_MS2, y * G_TO_MS2, z * G_TO_MS2) for t, x, y, z in raw)
 
     gyro_by_ts: dict[int, tuple[tuple[float, float, float, float], ...]] = {}
     for ts, data in _iter_bursts(meta_dir, "proc_gyro", subject_id, ".m_proc_gyro.dat"):
-        gyro_by_ts[ts] = _read_dat_bytes(data)
+        gyro_by_ts[ts] = _sanitize_burst_rows(_read_dat_bytes(data), subject_id, ts)
 
     all_ts = sorted(set(acc_by_ts) | set(gyro_by_ts))
     bursts = []
