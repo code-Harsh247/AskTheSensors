@@ -58,6 +58,11 @@ Format per entry: what it is, where it's from, which file(s) use it, and what it
 - **Source:** Anthropic, https://docs.anthropic.com/; accessed via OpenRouter, https://openrouter.ai/
 - **Used in:** `scripts/judge_explanations.py` and `ats/eval/rubric.py`: the LLM judge that scores open-world explanations on PRD §7.3.5's three-criterion, 1-5 rubric (docs/TASKS.md 4B.4). It sees each explanation and the values the system measured, and returns scores only; it is never part of the answering system and never produces an answer. Consistency is reported as agreement between two independent runs. Called with the Python standard library (`urllib`), so no extra dependency.
 
+### Claude Code (development assistant)
+- **What:** Anthropic's coding assistant, used during development — not part of the delivered system and not present at run time.
+- **Source:** Anthropic, https://www.anthropic.com/claude-code
+- **Used in:** implementation, debugging, refactoring, and drafting documentation across the repository, under both members' direction and review. Design decisions, the frozen decisions in docs/TASKS.md §0, and the pre-registered thresholds are the authors'. Every reported number was produced by running the committed code, and each regenerates from a clean checkout via the commands listed in the README — nothing in the report is asserted from a model's output. Listed here for the same reason as everything else in this file: PRD §9.3 asks for external resources to be cited at the point of use, and the presentation carries the same disclaimer.
+
 ---
 
 ## Still to review
